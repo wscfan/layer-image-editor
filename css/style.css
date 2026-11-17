@@ -1,0 +1,170 @@
+/* ================= 基础 ================= */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  color: #d8d9de;
+  background: #1b1c20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: #2e3036;
+  border: 1px solid #3c3e46;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover:not(:disabled) { background: #383b43; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button.primary { background: #2f6fed; border-color: #2f6fed; color: #fff; }
+button.primary:hover { background: #3d7cf5; }
+button.danger { color: #ff7b72; }
+
+input, select {
+  font: inherit;
+  color: #d8d9de;
+  background: #222329;
+  border: 1px solid #3c3e46;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+input[type="range"] { accent-color: #2f6fed; padding: 0; width: 110px; }
+input[type="color"] { padding: 2px; width: 42px; height: 26px; }
+input.num { width: 64px; }
+input.txt { width: 150px; }
+label { color: #9a9ca3; }
+.hidden { display: none !important; }
+
+/* ================= 顶栏 ================= */
+#topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 8px 14px; background: #222329; border-bottom: 1px solid #33353c;
+  flex-wrap: wrap;
+}
+#topbar .brand { font-size: 15px; font-weight: 600; margin-right: 6px; }
+#topbar .brand span { font-size: 12px; font-weight: 400; color: #8b8d94; margin-left: 6px; }
+#topbar .group { display: flex; gap: 6px; align-items: center; }
+
+/* ================= 工具选项栏 ================= */
+#optionsbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 6px 14px; background: #222329; border-bottom: 1px solid #33353c;
+  min-height: 46px; flex-wrap: wrap;
+}
+.opt { display: flex; align-items: center; gap: 8px; }
+.opt .val { color: #8b8d94; min-width: 34px; display: inline-block; }
+.opt.tip span { color: #8b8d94; }
+
+/* ================= 主工作区 ================= */
+#workspace { flex: 1; display: flex; min-height: 0; }
+
+/* 工具栏 */
+#toolrail {
+  width: 58px; background: #222329; border-right: 1px solid #33353c;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 8px 0;
+}
+#toolrail .tool {
+  width: 44px; height: 40px; font-size: 16px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+#toolrail .tool.active { background: #2f6fed; border-color: #2f6fed; color: #fff; }
+
+/* 画布区 */
+#canvasarea { flex: 1; overflow: auto; display: flex; background: #141519; position: relative; }
+#canvasarea.dragging { outline: 2px dashed #2f6fed; outline-offset: -4px; }
+#stagewrap {
+  margin: auto; position: relative; flex: none;
+  background: repeating-conic-gradient(#3b3c42 0% 25%, #303137 0% 50%);
+  background-size: 16px 16px;
+  box-shadow: 0 0 0 1px #000, 0 10px 34px rgba(0, 0, 0, .55);
+}
+#stage, #overlay { display: block; }
+#stage { touch-action: none; }
+#overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+/* ================= 右侧面板 ================= */
+#sidepanel {
+  width: 282px; background: #222329; border-left: 1px solid #33353c;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.panel { padding: 10px 12px; display: flex; flex-direction: column; min-height: 0; }
+.panel h2 { font-size: 13px; color: #aeb0b7; margin-bottom: 8px; font-weight: 600; }
+.panel h3 { font-size: 12px; color: #8b8d94; margin: 10px 0 6px; font-weight: 600; }
+
+/* 图层面板 */
+#layerpanel { flex: 1 1 auto; border-bottom: 1px solid #33353c; }
+#layerlist { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 2px; min-height: 60px; }
+.lrow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px; border-radius: 6px;
+  border: 1px solid transparent; cursor: pointer; user-select: none;
+}
+.lrow:hover { background: #2a2c32; }
+.lrow.active { background: #28324a; border-color: #2f6fed; }
+.lrow.dragover { border-top: 2px solid #2f6fed; }
+.lrow .eye { width: 26px; height: 26px; padding: 0; background: none; border: none; font-size: 14px; }
+.lrow .thumb {
+  width: 48px; height: 36px; flex: none;
+  border: 1px solid #3c3e46; border-radius: 4px; background: #191a1e;
+}
+.lrow .lname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow input.rename { width: 100%; min-width: 0; padding: 2px 6px; }
+.lrow.off .thumb, .lrow.off .lname { opacity: .35; }
+
+.active-controls {
+  border-top: 1px solid #33353c; padding-top: 8px; margin-top: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.active-controls .row, #adjustpanel .row { display: flex; align-items: center; gap: 8px; }
+.active-controls label, #adjustpanel label { width: 52px; flex: none; }
+.active-controls select { flex: 1; min-width: 0; }
+
+.layer-btns { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.layer-btns #btnAddLayer { flex: 1; }
+.layer-btns button { padding: 5px 9px; }
+
+/* 调整面板 */
+#adjustpanel { flex: 0 0 auto; max-height: 46%; overflow: auto; }
+#adjustpanel .row { margin-bottom: 2px; }
+#adjustpanel .row .val { color: #8b8d94; min-width: 44px; text-align: right; }
+#adjustpanel .btnrow { display: flex; gap: 8px; margin-top: 10px; }
+#adjustpanel .btnrow.wrap { flex-wrap: wrap; }
+#adjustpanel .tip { color: #77797f; font-size: 12px; margin-top: 8px; line-height: 1.5; }
+
+/* ================= 状态栏 ================= */
+#statusbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 5px 14px; background: #222329; border-top: 1px solid #33353c;
+  color: #9a9ca3;
+}
+#statusbar .group { display: flex; align-items: center; gap: 6px; }
+#statusbar button { padding: 2px 9px; }
+#statusbar #zoomLabel { min-width: 44px; text-align: center; }
+#statusbar .spacer { flex: 1; }
+#statusbar .hint { color: #6f7177; font-size: 12px; }
+#posInfo { min-width: 70px; }
+
+/* ================= 弹窗 ================= */
+.modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0, 0, 0, .55);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-card {
+  background: #26272d; border: 1px solid #3c3e46; border-radius: 10px;
+  padding: 18px 20px; width: 320px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.modal-card h3 { font-size: 15px; }
+.form-row { display: flex; align-items: center; gap: 10px; }
+.form-row label { width: 70px; flex: none; }
+.form-row input, .form-row select { flex: 1; }
+.btnrow.right { display: flex; justify-content: flex-end; gap: 8px; }

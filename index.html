@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LayerPaint · 图层图片编辑器</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============ 顶栏：文档操作 ============ -->
+<header id="topbar">
+  <div class="brand">🖼️ LayerPaint<span>图层图片编辑器</span></div>
+  <div class="group">
+    <button id="btnNewDoc" title="新建文档">新建</button>
+    <button id="btnOpen" title="导入图片作为图层（可多选）">打开图片</button>
+  </div>
+  <div class="group">
+    <button id="btnUndo" title="撤销 (Ctrl+Z)">↩ 撤销</button>
+    <button id="btnRedo" title="重做 (Ctrl+Shift+Z)">↪ 重做</button>
+  </div>
+  <div class="group">
+    <button id="btnExportPng" class="primary" title="导出 PNG (Ctrl+S)">导出 PNG</button>
+    <button id="btnExportJpg" title="导出 JPG">导出 JPG</button>
+  </div>
+</header>
+
+<!-- ============ 工具选项栏（按当前工具动态显示） ============ -->
+<section id="optionsbar">
+  <div class="opt" data-show="brush eraser fill rect ellipse text picker">
+    <label for="brushColor">颜色</label>
+    <input type="color" id="brushColor" value="#2563eb">
+  </div>
+  <div class="opt" data-show="brush eraser">
+    <label for="brushSize">大小</label>
+    <input type="range" id="brushSize" min="1" max="300" value="18">
+    <span class="val" id="brushSizeVal">18</span>
+  </div>
+  <div class="opt" data-show="brush eraser">
+    <label for="brushHardness">硬度</label>
+    <input type="range" id="brushHardness" min="0" max="100" value="80">
+    <span class="val" id="brushHardnessVal">80%</span>
+  </div>
+  <div class="opt" data-show="brush eraser rect ellipse text">
+    <label for="toolOpacity">不透明度</label>
+    <input type="range" id="toolOpacity" min="1" max="100" value="100">
+    <span class="val" id="toolOpacityVal">100%</span>
+  </div>
+  <div class="opt" data-show="fill">
+    <label for="fillTolerance">容差</label>
+    <input type="range" id="fillTolerance" min="0" max="255" value="32">
+    <span class="val" id="fillToleranceVal">32</span>
+  </div>
+  <div class="opt" data-show="rect ellipse">
+    <label for="shapeMode">样式</label>
+    <select id="shapeMode">
+      <option value="fill">填充</option>
+      <option value="stroke">描边</option>
+    </select>
+    <label for="strokeWidth">粗细</label>
+    <input type="number" id="strokeWidth" min="1" max="100" value="4" class="num">
+  </div>
+  <div class="opt" data-show="text">
+    <label for="textContent">内容</label>
+    <input type="text" id="textContent" value="Hello 图层" class="txt">
+    <label for="fontSize">字号</label>
+    <input type="number" id="fontSize" min="8" max="400" value="48" class="num">
+  </div>
+  <div class="opt tip" data-show="move"><span>拖动可移动当前图层内容（超出画布的部分会被裁剪）</span></div>
+</section>
+
+<!-- ============ 主工作区 ============ -->
+<main id="workspace">
+
+  <!-- 工具栏 -->
+  <nav id="toolrail">
+    <button type="button" class="tool active" data-tool="brush"  title="画笔 (B)">🖌</button>
+    <button type="button" class="tool" data-tool="eraser" title="橡皮擦 (E)">🧽</button>
+    <button type="button" class="tool" data-tool="fill"    title="油漆桶 (G)">🪣</button>
+    <button type="button" class="tool" data-tool="rect"    title="矩形 (R)，Shift 拖拽为正方形">▭</button>
+    <button type="button" class="tool" data-tool="ellipse" title="椭圆 (O)，Shift 拖拽为正圆">◯</button>
+    <button type="button" class="tool" data-tool="text"    title="文字 (T)，点击画布放置">T</button>
+    <button type="button" class="tool" data-tool="move"    title="移动图层 (M)">✥</button>
+    <button type="button" class="tool" data-tool="picker"  title="吸管 (I)，点击取色">💧</button>
+  </nav>
+
+  <!-- 画布区 -->
+  <section id="canvasarea">
+    <div id="stagewrap">
+      <canvas id="stage"></canvas>
+      <canvas id="overlay"></canvas>
+    </div>
+  </section>
+
+  <!-- 右侧面板 -->
+  <aside id="sidepanel">
+
+    <!-- 图层面板 -->
+    <section class="panel" id="layerpanel">
+      <h2>图层</h2>
+      <div id="layerlist"></div>
+      <div class="active-controls">
+        <div class="row">
+          <label for="layerOpacity">不透明度</label>
+          <input type="range" id="layerOpacity" min="0" max="100" value="100">
+          <span class="val" id="layerOpacityVal">100%</span>
+        </div>
+        <div class="row">
+          <label for="blendMode">混合模式</label>
+          <select id="blendMode">
+            <option value="source-over">正常</option>
+            <option value="multiply">正片叠底</option>
+            <option value="screen">滤色</option>
+            <option value="overlay">叠加</option>
+            <option value="darken">变暗</option>
+            <option value="lighten">变亮</option>
+            <option value="color-dodge">颜色减淡</option>
+            <option value="color-burn">颜色加深</option>
+            <option value="hard-light">强光</option>
+            <option value="soft-light">柔光</option>
+            <option value="difference">差值</option>
+            <option value="exclusion">排除</option>
+            <option value="hue">色相</option>
+            <option value="saturation">饱和度</option>
+            <option value="color">颜色</option>
+            <option value="luminosity">明度</option>
+          </select>
+        </div>
+      </div>
+      <div class="layer-btns">
+        <button type="button" id="btnAddLayer" class="primary" title="新建空白图层">＋ 新建图层</button>
+        <button type="button" id="btnDupLayer" title="复制图层 (Ctrl+D)">⧉</button>
+        <button type="button" id="btnLayerUp" title="上移一层">↑</button>
+        <button type="button" id="btnLayerDown" title="下移一层">↓</button>
+        <button type="button" id="btnMergeDown" title="向下合并">⤓</button>
+        <button type="button" id="btnDelLayer" class="danger" title="删除图层">✕</button>
+      </div>
+    </section>
+
+    <!-- 调整面板 -->
+    <section class="panel" id="adjustpanel">
+      <h2>调整 · 当前图层</h2>
+      <div class="row"><label>亮度</label><input type="range" id="adjBrightness" min="-100" max="100" value="0"><span class="val" id="adjBrightnessVal">0</span></div>
+      <div class="row"><label>对比度</label><input type="range" id="adjContrast" min="-100" max="100" value="0"><span class="val" id="adjContrastVal">0</span></div>
+      <div class="row"><label>饱和度</label><input type="range" id="adjSaturation" min="-100" max="100" value="0"><span class="val" id="adjSaturationVal">0</span></div>
+      <div class="row"><label>色相</label><input type="range" id="adjHue" min="-180" max="180" value="0"><span class="val" id="adjHueVal">0°</span></div>
+      <div class="row"><label>模糊</label><input type="range" id="adjBlur" min="0" max="100" value="0"><span class="val" id="adjBlurVal">0.0px</span></div>
+      <div class="btnrow">
+        <button type="button" id="btnApplyAdjust" class="primary">应用</button>
+        <button type="button" id="btnResetAdjust">重置</button>
+      </div>
+      <h3>一键滤镜</h3>
+      <div class="btnrow wrap">
+        <button type="button" data-filter="grayscale">黑白</button>
+        <button type="button" data-filter="invert">反色</button>
+        <button type="button" data-filter="sepia">复古</button>
+        <button type="button" data-filter="sharpen">锐化</button>
+        <button type="button" data-filter="pixelate">像素化</button>
+        <button type="button" data-filter="blur">模糊 4px</button>
+      </div>
+      <p class="tip">滑杆为实时预览，点「应用」后生效；一键滤镜立即作用于当前图层。滑杆数值相对原图，重置可取消预览。</p>
+    </section>
+
+  </aside>
+</main>
+
+<!-- ============ 状态栏 ============ -->
+<footer id="statusbar">
+  <div class="group">
+    <button type="button" id="zoomOut" title="缩小">−</button>
+    <span id="zoomLabel" class="val">100%</span>
+    <button type="button" id="zoomIn" title="放大">＋</button>
+    <button type="button" id="zoomFit" title="适应窗口">适配</button>
+    <button type="button" id="zoom100" title="实际大小">1:1</button>
+  </div>
+  <span id="docInfo">—</span>
+  <span id="posInfo" class="val"></span>
+  <span class="spacer"></span>
+  <span class="hint">B 画笔 · E 橡皮 · G 填充 · T 文字 · M 移动 · I 吸管 · Ctrl+Z 撤销 · Ctrl+S 导出 · Ctrl+滚轮 缩放</span>
+</footer>
+
+<!-- ============ 新建文档弹窗 ============ -->
+<div id="modalNewDoc" class="modal hidden">
+  <div class="modal-card">
+    <h3>新建文档</h3>
+    <div class="form-row"><label for="ndWidth">宽度 (px)</label><input type="number" id="ndWidth" value="1000" min="1" max="8000" class="num"></div>
+    <div class="form-row"><label for="ndHeight">高度 (px)</label><input type="number" id="ndHeight" value="660" min="1" max="8000" class="num"></div>
+    <div class="form-row"><label for="ndBg">背景</label>
+      <select id="ndBg">
+        <option value="#ffffff">白色</option>
+        <option value="#000000">黑色</option>
+        <option value="transparent">透明</option>
+      </select>
+    </div>
+    <div class="btnrow right">
+      <button type="button" id="ndCancel">取消</button>
+      <button type="button" id="ndOk" class="primary">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 隐藏的文件选择框 -->
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+
+<script src="js/layer.js"></script>
+<script src="js/history.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/compositor.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/layerpanel.js"></script>
+<script src="js/adjustpanel.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
