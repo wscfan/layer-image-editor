@@ -67,6 +67,15 @@
     <input type="number" id="fontSize" min="8" max="400" value="48" class="num">
   </div>
   <div class="opt tip" data-show="move"><span>拖动可移动当前图层内容（超出画布的部分会被裁剪）</span></div>
+  <div class="opt" data-show="scale">
+    <label>内容</label>
+    <span class="val" id="xformSize">—</span>
+    <button type="button" class="mini" id="xf50" title="缩小到 50%">50%</button>
+    <button type="button" class="mini" id="xf75" title="缩小到 75%">75%</button>
+    <button type="button" class="mini" id="xf125" title="放大到 125%">125%</button>
+    <button type="button" class="mini" id="xf200" title="放大到 200%">200%</button>
+    <button type="button" class="mini" id="xfFit" title="等比缩放并居中铺满画布">适应画布</button>
+  </div>
 </section>
 
 <!-- ============ 主工作区 ============ -->
@@ -81,6 +90,7 @@
     <button type="button" class="tool" data-tool="ellipse" title="椭圆 (O)，Shift 拖拽为正圆">◯</button>
     <button type="button" class="tool" data-tool="text"    title="文字 (T)，点击画布放置">T</button>
     <button type="button" class="tool" data-tool="move"    title="移动图层 (M)">✥</button>
+    <button type="button" class="tool" data-tool="scale"   title="缩放/变换 (S)：拖角等比缩放，Shift 自由拉伸，拖内容中间移动">⤢</button>
     <button type="button" class="tool" data-tool="picker"  title="吸管 (I)，点击取色">💧</button>
   </nav>
 
@@ -176,7 +186,7 @@
   <span id="docInfo">—</span>
   <span id="posInfo" class="val"></span>
   <span class="spacer"></span>
-  <span class="hint">B 画笔 · E 橡皮 · G 填充 · T 文字 · M 移动 · I 吸管 · Ctrl+Z 撤销 · Ctrl+S 导出 · Ctrl+滚轮 缩放</span>
+  <span class="hint">B 画笔 · E 橡皮 · G 填充 · T 文字 · S 缩放 · M 移动 · I 吸管 · Ctrl+Z 撤销 · Ctrl+S 导出 · Ctrl+滚轮 缩放</span>
 </footer>
 
 <!-- ============ 新建文档弹窗 ============ -->

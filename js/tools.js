@@ -14,6 +14,7 @@
     stroke: null,  // 画笔 / 橡皮
     shape: null,   // 矩形 / 椭圆
     moveOp: null,  // 移动图层
+    xform: null,   // 缩放 / 变换
   };
 
   /* ================= 小工具函数 ================= */
@@ -226,6 +227,120 @@
     PL.refreshAll();
   }
 
+  /* ================= 缩放 / 变换（编辑打开图片的大小） ================= */
+
+  const HANDLE_KEYS = ['nw', 'ne', 'sw', 'se'];
+  const resizeCursors = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' };
+
+  function cornerOf(box, handle) {
+    switch (handle) {
+      case 'nw': return { x: box.x, y: box.y };
+      case 'ne': return { x: box.x + box.w, y: box.y };
+      case 'sw': return { x: box.x, y: box.y + box.h };
+      default:   return { x: box.x + box.w, y: box.y + box.h };
+    }
+  }
+
+  function oppositeHandle(h) { return { nw: 'se', se: 'nw', ne: 'sw', sw: 'ne' }[h]; }
+
+  /** 计算图层不透明内容的包围盒（alpha > 0），空图层返回 null */
+  function getContentBBox(layer) {
+    const w = layer.width, h = layer.height;
+    const d = layer.ctx.getImageData(0, 0, w, h).data;
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        if (d[row + x * 4 + 3] !== 0) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    return maxX < 0 ? null : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+  }
+
+  let bboxCache = null; // { layerId, box }，像素变化由 onDocChanged 强制刷新
+
+  function activeLayer() {
+    return PL.state.stack ? PL.state.stack.getById(PL.state.activeId) : null;
+  }
+
+  /** 取当前图层内容包围盒（按图层缓存） */
+  function refreshBBox(force) {
+    const l = activeLayer();
+    if (!l) { bboxCache = null; return null; }
+    if (!force && bboxCache && bboxCache.layerId === l.id) return bboxCache.box;
+    const box = getContentBBox(l);
+    bboxCache = { layerId: l.id, box };
+    return box;
+  }
+
+  /** 命中检测：是否点在手柄上（命中半径为屏幕 10px） */
+  function hitHandle(p, box) {
+    if (!box) return null;
+    const r = 10 / PL.state.zoom;
+    for (const k of HANDLE_KEYS) {
+      const c = cornerOf(box, k);
+      if (Math.abs(p.x - c.x) <= r && Math.abs(p.y - c.y) <= r) return k;
+    }
+    return null;
+  }
+
+  /** 把 base 像素以 (ax,ay) 为锚点缩放 fx/fy 倍（可选平移 dx,dy）画回图层 */
+  function applyScaleAbout(layer, base, fx, fy, ax, ay, dx = 0, dy = 0) {
+    const c = layer.ctx;
+    c.save();
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, layer.width, layer.height);
+    c.setTransform(fx, 0, 0, fy, ax - fx * ax + dx, ay - fy * ay + dy);
+    c.drawImage(base, 0, 0);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.restore();
+    PL.render();
+  }
+
+  function updateXformSizeLabel(box) {
+    const el = document.getElementById('xformSize');
+    if (el) el.textContent = box ? `${Math.round(box.w)} × ${Math.round(box.h)} px` : '空';
+  }
+
+  /** 变换框 + 四角手柄 + 尺寸提示 */
+  function drawXformUI(box) {
+    const ctx = PL.compositor.overlayCtx();
+    PL.compositor.clearOverlay();
+    updateXformSizeLabel(box);
+    if (!box) return;
+    const z = PL.state.zoom;
+    ctx.save();
+    // 虚线边框
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1, 1.2 / z);
+    ctx.setLineDash([6 / z, 4 / z]);
+    ctx.strokeRect(box.x, box.y, box.w, box.h);
+    // 四角手柄
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1 / z;
+    const s = 9 / z;
+    for (const k of HANDLE_KEYS) {
+      const c = cornerOf(box, k);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#000000';
+      ctx.fillRect(c.x - s / 2, c.y - s / 2, s, s);
+      ctx.strokeRect(c.x - s / 2, c.y - s / 2, s, s);
+    }
+    // 尺寸提示
+    ctx.font = `${12 / z}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,.8)';
+    ctx.shadowBlur = 2 / z;
+    ctx.fillText(`${Math.round(box.w)} × ${Math.round(box.h)}`, box.x, Math.max(16 / z, box.y - 6 / z));
+    ctx.restore();
+  }
+
   /* ================= 油漆桶（扫描线泛洪填充） ================= */
 
   /**
@@ -337,6 +452,24 @@
       return;
     }
 
+    if (tool === 'scale') {
+      const layer = s.stack.getById(s.activeId);
+      if (!layer) return;
+      const box = refreshBBox(true); // 按下时取最新包围盒
+      if (!box) return;              // 空图层没有可变换的内容
+      T.xform = {
+        layer,
+        base: layer.clonePixels(),
+        startBox: box,
+        handle: hitHandle(p, box), // null = 拖内容移动
+        start: p,
+      };
+      T.drawing = true;
+      e.target.setPointerCapture(e.pointerId);
+      drawXformUI(box);
+      return;
+    }
+
     if (tool === 'move') {
       const layer = s.stack.getById(s.activeId);
       if (!layer) return;
@@ -365,7 +498,18 @@
     const s = PL.state;
 
     if (!T.drawing) {
-      if (s.tool === 'brush' || s.tool === 'eraser') drawBrushCursor(p);
+      if (s.tool === 'brush' || s.tool === 'eraser') {
+        drawBrushCursor(p);
+      } else if (s.tool === 'scale') {
+        // 悬停：显示变换框并根据位置切换光标
+        const box = refreshBBox();
+        drawXformUI(box);
+        const h = hitHandle(p, box);
+        const stage = PL.compositor.stage();
+        if (h) stage.style.cursor = resizeCursors[h];
+        else stage.style.cursor = box && p.x >= box.x && p.x <= box.x + box.w &&
+          p.y >= box.y && p.y <= box.y + box.h ? 'move' : 'default';
+      }
       return;
     }
     if (T.stroke) {
@@ -375,6 +519,34 @@
       T.shape.cur = p;
       T.shape.shift = e.shiftKey;
       drawShapePreview();
+    } else if (T.xform) {
+      const xf = T.xform;
+      if (!xf.handle) {
+        // 拖内容中间：移动
+        const dx = Math.round(p.x - xf.start.x);
+        const dy = Math.round(p.y - xf.start.y);
+        applyScaleAbout(xf.layer, xf.base, 1, 1, 0, 0, dx, dy);
+        drawXformUI({ x: xf.startBox.x + dx, y: xf.startBox.y + dy, w: xf.startBox.w, h: xf.startBox.h });
+      } else {
+        // 拖角：默认等比缩放（以对角为锚点），Shift = 自由拉伸
+        const a = cornerOf(xf.startBox, oppositeHandle(xf.handle));
+        let fx, fy;
+        if (e.shiftKey) {
+          fx = Math.max(1, Math.abs(p.x - a.x)) / xf.startBox.w;
+          fy = Math.max(1, Math.abs(p.y - a.y)) / xf.startBox.h;
+        } else {
+          const c0 = cornerOf(xf.startBox, xf.handle);
+          const f = Math.hypot(p.x - a.x, p.y - a.y) /
+            Math.max(1e-6, Math.hypot(c0.x - a.x, c0.y - a.y));
+          fx = fy = Math.max(f, 1 / Math.max(xf.startBox.w, xf.startBox.h)); // 最小缩到 1px
+        }
+        applyScaleAbout(xf.layer, xf.base, fx, fy, a.x, a.y);
+        // 变换后的框（用于 UI 显示）
+        const nb = { w: xf.startBox.w * fx, h: xf.startBox.h * fy };
+        nb.x = a.x === xf.startBox.x ? a.x : a.x - nb.w;
+        nb.y = a.y === xf.startBox.y ? a.y : a.y - nb.h;
+        drawXformUI(nb);
+      }
     } else if (T.moveOp) {
       doMove(p);
     }
@@ -385,6 +557,12 @@
       endStroke();
     } else if (T.shape) {
       commitShape();
+    } else if (T.xform) {
+      const label = T.xform.handle ? '缩放图层' : '移动图层';
+      T.xform = null;
+      T.drawing = false;
+      PL.history.commit(label);
+      PL.refreshAll(); // onDocChanged 会刷新包围盒与变换框
     } else if (T.moveOp) {
       T.moveOp = null;
       T.drawing = false;
@@ -397,6 +575,41 @@
 
   PL.tools = {
     get drawing() { return T.drawing; },
+
+    /** 切换到某工具时由 main.setTool 调用 */
+    activate(tool) {
+      if (tool === 'scale') drawXformUI(refreshBBox(true));
+    },
+
+    /** 文档/图层变化（提交、撤销等）后由 refreshAll 调用 */
+    onDocChanged() {
+      if (PL.state.tool === 'scale') drawXformUI(refreshBBox(true));
+    },
+
+    /** 数值缩放当前图层内容（关于内容中心，立即生效） */
+    scaleContent(f) {
+      const l = activeLayer();
+      if (!l) return;
+      const box = refreshBBox(true);
+      if (!box) return;
+      applyScaleAbout(l, l.clonePixels(), f, f, box.x + box.w / 2, box.y + box.h / 2);
+      PL.history.commit('缩放 ' + Math.round(f * 100) + '%');
+      PL.refreshAll();
+    },
+
+    /** 等比缩放内容并居中铺满画布 */
+    fitContent() {
+      const l = activeLayer();
+      if (!l) return;
+      const box = refreshBBox(true);
+      if (!box) return;
+      const d = PL.state.doc;
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      const f = Math.min(d.width / box.w, d.height / box.h);
+      applyScaleAbout(l, l.clonePixels(), f, f, cx, cy, d.width / 2 - cx, d.height / 2 - cy);
+      PL.history.commit('内容适应画布');
+      PL.refreshAll();
+    },
 
     init() {
       const stage = PL.compositor.stage();

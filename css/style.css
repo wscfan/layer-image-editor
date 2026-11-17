@@ -61,6 +61,7 @@ label { color: #9a9ca3; }
 .opt { display: flex; align-items: center; gap: 8px; }
 .opt .val { color: #8b8d94; min-width: 34px; display: inline-block; }
 .opt.tip span { color: #8b8d94; }
+.opt button.mini { padding: 3px 9px; font-size: 12px; }
 
 /* ================= 主工作区 ================= */
 #workspace { flex: 1; display: flex; min-height: 0; }

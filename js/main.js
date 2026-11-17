@@ -159,8 +159,9 @@
       o.classList.toggle('hidden', !show);
     });
     const stage = PL.compositor.stage();
-    stage.style.cursor = { move: 'move', text: 'text' }[tool] || 'crosshair';
+    stage.style.cursor = { move: 'move', text: 'text', scale: 'default' }[tool] || 'crosshair';
     PL.compositor.clearOverlay();
+    if (PL.tools.activate) PL.tools.activate(tool);
   }
 
   /* ================= 状态刷新 ================= */
@@ -168,6 +169,7 @@
   PL.refreshAll = function () {
     if (PL.adjust && PL.state.previewFilter) PL.adjust.onDocChanged();
     PL.compositor.render();
+    if (PL.tools && PL.tools.onDocChanged) PL.tools.onDocChanged();
     PL.layerpanel.render();
     PL.updateStatus();
     PL.updateHistoryButtons();
@@ -216,7 +218,7 @@
 
       const map = {
         b: 'brush', e: 'eraser', m: 'move', g: 'fill',
-        r: 'rect', o: 'ellipse', t: 'text', i: 'picker',
+        r: 'rect', o: 'ellipse', t: 'text', i: 'picker', s: 'scale',
       };
       if (map[k]) { setTool(map[k]); return; }
 
@@ -295,6 +297,10 @@
     document.getElementById('strokeWidth').addEventListener('input', (e) => { o.strokeWidth = +e.target.value; });
     document.getElementById('textContent').addEventListener('input', (e) => { o.text = e.target.value; });
     document.getElementById('fontSize').addEventListener('input', (e) => { o.fontSize = Math.max(8, +e.target.value || 48); });
+    // 缩放工具：数值缩放 / 适应画布
+    [['xf50', 0.5], ['xf75', 0.75], ['xf125', 1.25], ['xf200', 2]].forEach(([id, f]) =>
+      document.getElementById(id).addEventListener('click', () => PL.tools.scaleContent(f)));
+    document.getElementById('xfFit').addEventListener('click', () => PL.tools.fitContent());
   }
 
   function initZoom() {
