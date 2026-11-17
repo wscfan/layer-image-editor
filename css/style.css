@@ -62,6 +62,7 @@ label { color: #9a9ca3; }
 .opt .val { color: #8b8d94; min-width: 34px; display: inline-block; }
 .opt.tip span { color: #8b8d94; }
 .opt button.mini { padding: 3px 9px; font-size: 12px; }
+.opt-end { margin-left: auto; }
 
 /* ================= 主工作区 ================= */
 #workspace { flex: 1; display: flex; min-height: 0; }
@@ -112,14 +113,23 @@ label { color: #9a9ca3; }
 #sidepanel {
   width: 282px; background: #222329; border-left: 1px solid #33353c;
   display: flex; flex-direction: column; min-height: 0;
+  /* 整个侧栏可滚动：窗口再矮，各面板依次排布也不会互相重叠 */
+  overflow-y: auto; overflow-x: hidden;
 }
-.panel { padding: 10px 12px; display: flex; flex-direction: column; min-height: 0; }
+.panel {
+  padding: 10px 12px; display: flex; flex-direction: column;
+  flex: 0 0 auto;   /* 面板按内容高度排布，不被压缩 */
+  min-height: 0;
+}
 .panel h2 { font-size: 13px; color: #aeb0b7; margin-bottom: 8px; font-weight: 600; }
 .panel h3 { font-size: 12px; color: #8b8d94; margin: 10px 0 6px; font-weight: 600; }
 
 /* 图层面板 */
-#layerpanel { flex: 1 1 auto; border-bottom: 1px solid #33353c; }
-#layerlist { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 2px; min-height: 60px; }
+#layerpanel { flex: 1 0 auto; border-bottom: 1px solid #33353c; }
+#layerlist {
+  flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; gap: 2px;
+  max-height: 190px; min-height: 60px;   /* 图层多时内部滚动，不挤占其它面板 */
+}
 .lrow {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 6px; border-radius: 6px;
@@ -145,12 +155,15 @@ label { color: #9a9ca3; }
 .active-controls label, #adjustpanel label { width: 52px; flex: none; }
 .active-controls select { flex: 1; min-width: 0; }
 
-.layer-btns { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.layer-btns #btnAddLayer { flex: 1; }
+.layer-btns { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.layer-btns-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .layer-btns button { padding: 5px 9px; }
 
 /* 调整面板 */
-#adjustpanel { flex: 0 0 auto; max-height: 38%; overflow: auto; }
+#adjustpanel {
+  flex: 0 0 auto;
+  max-height: 340px; overflow-y: auto;   /* 内容超长时内部滚动 */
+}
 #adjustpanel .row { margin-bottom: 2px; }
 #adjustpanel .row .val { color: #8b8d94; min-width: 44px; text-align: right; }
 #adjustpanel .btnrow { display: flex; gap: 8px; margin-top: 10px; }
@@ -168,7 +181,10 @@ label { color: #9a9ca3; }
 .curve-channels .ch[data-ch="g"].active { background: #2f8f46; border-color: #2f8f46; }
 .curve-channels .ch[data-ch="b"].active { background: #1f6fd0; border-color: #1f6fd0; }
 #curveEditor {
-  display: block; width: 100%; aspect-ratio: 1 / 1;
+  display: block;
+  width: min(100%, 190px);          /* 限高：曲线画布不再挤占侧栏空间 */
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
   border: 1px solid #3c3e46; border-radius: 6px;
   background: #16171b; touch-action: none; cursor: crosshair;
 }
@@ -197,11 +213,28 @@ label { color: #9a9ca3; }
 }
 .modal-card {
   background: #26272d; border: 1px solid #3c3e46; border-radius: 10px;
-  padding: 18px 20px; width: 320px;
+  padding: 18px 20px; width: 360px; max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 60px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
 }
+.modal-card.wide { width: 440px; }
 .modal-card h3 { font-size: 15px; }
+.form-body { display: flex; flex-direction: column; gap: 10px; }
 .form-row { display: flex; align-items: center; gap: 10px; }
-.form-row label { width: 70px; flex: none; }
-.form-row input, .form-row select { flex: 1; }
+.form-row > label { width: 92px; flex: none; color: #9a9ca3; }
+.form-row .field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.form-row .field input[type="range"] { flex: 1; width: auto; min-width: 0; }
+.form-row .field input[type="text"],
+.form-row .field input[type="number"],
+.form-row .field select { flex: 1; min-width: 0; }
+.form-row .field .val { color: #8b8d94; min-width: 52px; text-align: right; }
+.form-row .field .check-text { color: #9a9ca3; }
+.form-section {
+  font-size: 12px; color: #8b8d94; font-weight: 600;
+  margin-top: 4px; padding-bottom: 4px; border-bottom: 1px solid #33353c;
+}
+.form-static { color: #77797f; font-size: 12px; line-height: 1.6; }
+.form-static .tip { margin: 0; }
+.form-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2f6fed; }
 .btnrow.right { display: flex; justify-content: flex-end; gap: 8px; }

@@ -86,16 +86,18 @@
       };
     },
 
-    /** 拍平可见图层，用于导出（bgColor 用于 JPG 等不支持透明的格式） */
-    flatten(mime, quality, bgColor) {
+    /** 拍平可见图层，用于导出（bgColor 用于 JPG 等不支持透明的格式；scale 为输出缩放） */
+    flatten(mime, quality, bgColor, scale = 1) {
       const d = PL.state.doc;
+      const w = Math.max(1, Math.round(d.width * scale));
+      const h = Math.max(1, Math.round(d.height * scale));
       const c = document.createElement('canvas');
-      c.width = d.width;
-      c.height = d.height;
+      c.width = w;
+      c.height = h;
       const ctx = c.getContext('2d');
       if (bgColor) {
         ctx.fillStyle = bgColor;
-        ctx.fillRect(0, 0, d.width, d.height);
+        ctx.fillRect(0, 0, w, h);
       }
       for (const l of PL.state.stack.layers) {
         if (!l.visible) continue;
@@ -104,7 +106,7 @@
         const src = (PL.curves && PL.curves.hasCurves(l))
           ? PL.curves.previewCanvas(l)
           : l.canvas;
-        ctx.drawImage(src, 0, 0);
+        ctx.drawImage(src, 0, 0, w, h);
       }
       return c.toDataURL(mime, quality);
     },

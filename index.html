@@ -13,6 +13,7 @@
   <div class="brand">🖼️ LayerPaint<span>图层图片编辑器</span></div>
   <div class="group">
     <button id="btnNewDoc" title="新建文档">新建</button>
+    <button id="btnDocSettings" title="修改画布尺寸与背景">文档设置</button>
     <button id="btnOpen" title="导入图片作为图层（可多选）">打开图片</button>
   </div>
   <div class="group">
@@ -20,7 +21,7 @@
     <button id="btnRedo" title="重做 (Ctrl+Shift+Z)">↪ 重做</button>
   </div>
   <div class="group">
-    <button id="btnExportPng" class="primary" title="导出 PNG (Ctrl+S)">导出 PNG</button>
+    <button id="btnExportPng" class="primary" title="导出图片 (Ctrl+S 快速导出 PNG)">导出 PNG</button>
     <button id="btnExportJpg" title="导出 JPG">导出 JPG</button>
   </div>
 </header>
@@ -65,6 +66,9 @@
     <input type="number" id="fontSize" min="8" max="400" value="48" class="num">
   </div>
   <div class="opt tip" data-show="text"><span>点击画布直接输入文字；点击已有文字可重新编辑（Esc 取消 · Ctrl+Enter 完成）</span></div>
+  <div class="opt opt-end">
+    <button type="button" class="mini" id="btnToolSettings" title="打开工具设置（完整参数）">⚙ 工具设置</button>
+  </div>
   <div class="opt tip" data-show="move"><span>拖动可移动当前图层内容（超出画布的部分会被裁剪）</span></div>
   <div class="opt" data-show="scale">
     <label>内容</label>
@@ -138,11 +142,14 @@
       </div>
       <div class="layer-btns">
         <button type="button" id="btnAddLayer" class="primary" title="新建空白图层">＋ 新建图层</button>
-        <button type="button" id="btnDupLayer" title="复制图层 (Ctrl+D)">⧉</button>
-        <button type="button" id="btnLayerUp" title="上移一层">↑</button>
-        <button type="button" id="btnLayerDown" title="下移一层">↓</button>
-        <button type="button" id="btnMergeDown" title="向下合并">⤓</button>
-        <button type="button" id="btnDelLayer" class="danger" title="删除图层">✕</button>
+        <div class="layer-btns-row">
+          <button type="button" id="btnDupLayer" title="复制图层 (Ctrl+D)">⧉</button>
+          <button type="button" id="btnLayerUp" title="上移一层">↑</button>
+          <button type="button" id="btnLayerDown" title="下移一层">↓</button>
+          <button type="button" id="btnMergeDown" title="向下合并">⤓</button>
+          <button type="button" id="btnLayerProps" title="图层属性（名称/可见/不透明度/混合模式）">⚙</button>
+          <button type="button" id="btnDelLayer" class="danger" title="删除图层">✕</button>
+        </div>
       </div>
     </section>
 
@@ -184,7 +191,7 @@
         <button type="button" id="btnCurveApply" class="primary">应用曲线</button>
         <button type="button" id="btnCurveReset">重置</button>
       </div>
-      <p class="tip">拖动控制点调整色调 · 单击曲线添加控制点 · 双击控制点删除 · 背景为图层直方图</p>
+      <p class="tip">拖动控制点调整色调 · 单击曲线加点 · 双击控制点删除 · 背景为直方图</p>
     </section>
 
   </aside>
@@ -205,26 +212,6 @@
   <span class="hint">B 画笔 · E 橡皮 · G 填充 · T 文字 · S 缩放 · M 移动 · I 吸管 · Ctrl+Z 撤销 · Ctrl+S 导出 · Ctrl+滚轮 缩放</span>
 </footer>
 
-<!-- ============ 新建文档弹窗 ============ -->
-<div id="modalNewDoc" class="modal hidden">
-  <div class="modal-card">
-    <h3>新建文档</h3>
-    <div class="form-row"><label for="ndWidth">宽度 (px)</label><input type="number" id="ndWidth" value="1000" min="1" max="8000" class="num"></div>
-    <div class="form-row"><label for="ndHeight">高度 (px)</label><input type="number" id="ndHeight" value="660" min="1" max="8000" class="num"></div>
-    <div class="form-row"><label for="ndBg">背景</label>
-      <select id="ndBg">
-        <option value="#ffffff">白色</option>
-        <option value="#000000">黑色</option>
-        <option value="transparent">透明</option>
-      </select>
-    </div>
-    <div class="btnrow right">
-      <button type="button" id="ndCancel">取消</button>
-      <button type="button" id="ndOk" class="primary">创建</button>
-    </div>
-  </div>
-</div>
-
 <!-- 隐藏的文件选择框 -->
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
 
@@ -232,6 +219,8 @@
 <script src="js/history.js"></script>
 <script src="js/filters.js"></script>
 <script src="js/curves.js"></script>
+<script src="js/modal.js"></script>
+<script src="js/dialogs.js"></script>
 <script src="js/compositor.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/layerpanel.js"></script>

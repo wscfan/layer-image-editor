@@ -9,6 +9,9 @@
   /* ================= 图层操作 ================= */
 
   PL.actions = {
+    newDocument,
+    resizeDocument,
+
     addLayer() {
       const l = new PL.Layer('图层 ' + (++S.layerSeq), S.doc.width, S.doc.height);
       S.stack.add(l);
@@ -91,6 +94,44 @@
     PL.refreshAll();
   }
 
+  /**
+   * 修改画布尺寸：所有图层按新尺寸重建（可等比缩放内容并居中）。
+   * bg: 'keep' 保持 / 颜色值 / 'transparent'
+   */
+  function resizeDocument(width, height, bg, scaleContent) {
+    const old = S.doc;
+    const s = scaleContent ? Math.min(width / old.width, height / old.height) : 1;
+    const dx = (width - old.width * s) / 2;
+    const dy = (height - old.height * s) / 2;
+
+    const stack = new PL.LayerStack();
+    S.stack.layers.forEach(l => {
+      const nl = new PL.Layer(l.name, width, height);
+      nl.visible = l.visible;
+      nl.opacity = l.opacity;
+      nl.blendMode = l.blendMode;
+      nl.ctx.drawImage(l.canvas, dx, dy, old.width * s, old.height * s);
+      if (l.text) {
+        nl.text = { ...l.text, x: l.text.x * s + dx, y: l.text.y * s + dy, fontSize: l.text.fontSize * s };
+        nl._textBox = null;
+      }
+      stack.layers.push(nl);
+    });
+    // 背景色：作为最底层新建一个背景层
+    if (bg && bg !== 'keep') {
+      const bgLayer = new PL.Layer('背景', width, height, bg === 'transparent' ? {} : { fill: bg });
+      stack.layers.unshift(bgLayer);
+    }
+    S.doc.width = width;
+    S.doc.height = height;
+    S.stack = stack;
+    if (!stack.getById(S.activeId)) S.activeId = stack.top ? stack.top.id : null;
+    PL.compositor.resizeCanvas();
+    PL.compositor.fit();
+    PL.history.commit('调整文档尺寸');
+    PL.refreshAll();
+  }
+
   function loadImageFile(file) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
@@ -147,7 +188,6 @@
     a.download = `layerpaint-${ts}.${ext}`;
     a.click();
   }
-
   /* ================= 工具切换 ================= */
 
   function setTool(tool) {
@@ -155,9 +195,10 @@
     S.tool = tool;
     document.querySelectorAll('#toolrail .tool').forEach(b =>
       b.classList.toggle('active', b.dataset.tool === tool));
-    // 按工具显示对应选项
+    // 按工具显示对应选项（未标记 data-show 的常驻显示）
     document.querySelectorAll('#optionsbar .opt').forEach(o => {
-      const show = (o.dataset.show || '').split(/\s+/).includes(tool);
+      const list = o.dataset.show;
+      const show = list === undefined ? true : list.split(/\s+/).includes(tool);
       o.classList.toggle('hidden', !show);
     });
     const stage = PL.compositor.stage();
@@ -203,6 +244,11 @@
 
   function initKeyboard() {
     window.addEventListener('keydown', (e) => {
+      // 弹框打开时只处理 Esc，避免误触发工具快捷键
+      if (PL.modal && PL.modal.isOpen()) {
+        if (e.key === 'Escape') PL.modal.cancel();
+        return;
+      }
       if (isTyping(e)) return;
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
@@ -256,29 +302,15 @@
     document.getElementById('btnUndo').addEventListener('click', () => PL.history.undo());
     document.getElementById('btnRedo').addEventListener('click', () => PL.history.redo());
     document.getElementById('btnExportPng').addEventListener('click', () =>
-      exportImage('image/png', 'png'));
+      PL.dialogs.openExport('png'));
     document.getElementById('btnExportJpg').addEventListener('click', () =>
-      exportImage('image/jpeg', 'jpg', '#ffffff', 0.92));
+      PL.dialogs.openExport('jpeg'));
     document.querySelectorAll('#toolrail .tool').forEach(b =>
       b.addEventListener('click', () => setTool(b.dataset.tool)));
   }
 
   function initModal() {
-    const modal = document.getElementById('modalNewDoc');
-    document.getElementById('btnNewDoc').addEventListener('click', () => {
-      modal.classList.remove('hidden');
-      document.getElementById('ndWidth').focus();
-    });
-    document.getElementById('ndCancel').addEventListener('click', () => modal.classList.add('hidden'));
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
-    document.getElementById('ndOk').addEventListener('click', () => {
-      const w = Math.min(8000, Math.max(1, parseInt(document.getElementById('ndWidth').value, 10) || 1000));
-      const h = Math.min(8000, Math.max(1, parseInt(document.getElementById('ndHeight').value, 10) || 660));
-      const sel = document.getElementById('ndBg').value;
-      const bg = sel === 'transparent' ? null : sel;
-      modal.classList.add('hidden');
-      newDocument(w, h, bg, '新建文档');
-    });
+    // 弹框统一由 PL.dialogs / PL.modal 管理，这里无需额外处理
   }
 
   function initOptions() {
@@ -340,6 +372,7 @@
     PL.layerpanel.init();
     PL.adjust.init();
     PL.curves.init();
+    PL.dialogs.init();
 
     initTopbar();
     initModal();
