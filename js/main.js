@@ -56,6 +56,7 @@
       if (i <= 0) return; // 已是最底层
       const top = S.stack.layers[i];
       const below = S.stack.layers[i - 1];
+      PL.bakeIfText(below); // 合并会向下层写入像素，下层文字需固化
       const c = below.ctx;
       c.save();
       c.globalAlpha = top.opacity;
@@ -150,6 +151,7 @@
   /* ================= 工具切换 ================= */
 
   function setTool(tool) {
+    if (PL.tools.commitTextIfEditing) PL.tools.commitTextIfEditing(); // 切工具前提交文字编辑
     S.tool = tool;
     document.querySelectorAll('#toolrail .tool').forEach(b =>
       b.classList.toggle('active', b.dataset.tool === tool));
@@ -233,6 +235,7 @@
         const l = S.stack.getById(S.activeId);
         if (!l) return;
         e.preventDefault();
+        PL.bakeIfText(l); // 清空像素后文字数据与像素不再对应，需固化
         l.ctx.clearRect(0, 0, l.width, l.height);
         PL.history.commit('清空图层');
         PL.refreshAll();
@@ -295,7 +298,6 @@
     document.getElementById('brushColor').addEventListener('input', (e) => { o.color = e.target.value; });
     document.getElementById('shapeMode').addEventListener('change', (e) => { o.shapeMode = e.target.value; });
     document.getElementById('strokeWidth').addEventListener('input', (e) => { o.strokeWidth = +e.target.value; });
-    document.getElementById('textContent').addEventListener('input', (e) => { o.text = e.target.value; });
     document.getElementById('fontSize').addEventListener('input', (e) => { o.fontSize = Math.max(8, +e.target.value || 48); });
     // 缩放工具：数值缩放 / 适应画布
     [['xf50', 0.5], ['xf75', 0.75], ['xf125', 1.25], ['xf200', 2]].forEach(([id, f]) =>

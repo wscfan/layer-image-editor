@@ -31,6 +31,8 @@
           width: l.width,
           height: l.height,
           pixels: l.clonePixels(),
+          text: l.text ? { ...l.text } : null,           // 文字源数据（保证撤销后仍可再编辑）
+          textBox: l._textBox ? { ...l._textBox } : null,
         })),
       };
     },
@@ -76,6 +78,8 @@
         l.opacity = m.opacity;
         l.blendMode = m.blendMode;
         l.ctx.drawImage(m.pixels, 0, 0);
+        l.text = m.text ? { ...m.text } : null;
+        l._textBox = m.textBox ? { ...m.textBox } : null;
         s.stack.layers.push(l);
         PL.Layer._seq = Math.max(PL.Layer._seq, m.id);
       });

@@ -39,6 +39,7 @@
       els.overlay.style.width = els.stage.style.width;
       els.overlay.style.height = els.stage.style.height;
       if (PL.updateStatus) PL.updateStatus();
+      if (PL.tools && PL.tools.onZoomChanged) PL.tools.onZoomChanged();
     },
 
     /** 适应窗口 */

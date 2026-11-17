@@ -25,8 +25,7 @@
       tolerance: 32,     // 油漆桶容差
       shapeMode: 'fill', // fill | stroke
       strokeWidth: 4,
-      text: 'Hello 图层',
-      fontSize: 48,
+      fontSize: 48,      // 文字字号（内容在画布上直接输入）
     },
     previewFilter: '',   // 调整面板的实时预览滤镜（仅当前图层）
     previewLayerId: null,
@@ -116,4 +115,16 @@
 
   PL.Layer = Layer;
   PL.LayerStack = LayerStack;
+
+  /**
+   * 像素将被直接修改（画笔/填充/形状/滤镜/缩放等）时，
+   * 把文字图层固化为普通像素图层（文字不再可编辑）。
+   * 移动类操作不走这里，文字坐标会被同步更新。
+   */
+  PL.bakeIfText = function (layer) {
+    if (layer && layer.text) {
+      layer.text = null;
+      layer._textBox = null;
+    }
+  };
 })();

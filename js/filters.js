@@ -22,6 +22,7 @@
     /** 把 CSS filter 永久烘焙到图层像素 */
     applyFilter(layer, filterStr) {
       if (!filterStr) return;
+      PL.bakeIfText(layer); // 滤镜直接改像素，文字图层需固化
       const tmp = document.createElement('canvas');
       tmp.width = layer.width;
       tmp.height = layer.height;
@@ -39,6 +40,7 @@
 
     /** 3×3 锐化卷积 */
     sharpen(layer) {
+      PL.bakeIfText(layer);
       const w = layer.width, h = layer.height, ctx = layer.ctx;
       const src = ctx.getImageData(0, 0, w, h);
       const out = ctx.createImageData(w, h);
@@ -68,6 +70,7 @@
 
     /** 像素化：block 为目标格子边长（px） */
     pixelate(layer, block = 12) {
+      PL.bakeIfText(layer);
       const w = layer.width, h = layer.height;
       const sw = Math.max(1, Math.round(w / block));
       const sh = Math.max(1, Math.round(h / block));

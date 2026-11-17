@@ -91,6 +91,23 @@ label { color: #9a9ca3; }
 #stage { touch-action: none; }
 #overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
 
+/* 画布上的文字编辑框 */
+#textEditor {
+  position: absolute;
+  margin: 0;
+  padding: 0 2px;
+  background: transparent;
+  border: 1px dashed rgba(96, 150, 255, .9);
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  font-weight: 600;
+  z-index: 5;
+  min-width: 60px;
+}
+#textEditor::placeholder { color: rgba(200, 205, 220, .55); }
+
 /* ================= 右侧面板 ================= */
 #sidepanel {
   width: 282px; background: #222329; border-left: 1px solid #33353c;
