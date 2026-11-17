@@ -61,7 +61,11 @@
         ctx.globalCompositeOperation = l.blendMode;
         // 调整面板的实时预览：只作用于当前图层
         if (s.previewFilter && l.id === s.previewLayerId) ctx.filter = s.previewFilter;
-        ctx.drawImage(l.canvas, 0, 0);
+        // 曲线：图层带曲线时用经过 LUT 的画布
+        const src = (PL.curves && PL.curves.hasCurves(l))
+          ? PL.curves.previewCanvas(l)
+          : l.canvas;
+        ctx.drawImage(src, 0, 0);
       }
       ctx.filter = 'none';
       ctx.globalAlpha = 1;
@@ -97,7 +101,10 @@
         if (!l.visible) continue;
         ctx.globalAlpha = l.opacity;
         ctx.globalCompositeOperation = l.blendMode;
-        ctx.drawImage(l.canvas, 0, 0);
+        const src = (PL.curves && PL.curves.hasCurves(l))
+          ? PL.curves.previewCanvas(l)
+          : l.canvas;
+        ctx.drawImage(src, 0, 0);
       }
       return c.toDataURL(mime, quality);
     },

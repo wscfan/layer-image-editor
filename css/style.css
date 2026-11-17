@@ -150,12 +150,31 @@ label { color: #9a9ca3; }
 .layer-btns button { padding: 5px 9px; }
 
 /* 调整面板 */
-#adjustpanel { flex: 0 0 auto; max-height: 46%; overflow: auto; }
+#adjustpanel { flex: 0 0 auto; max-height: 38%; overflow: auto; }
 #adjustpanel .row { margin-bottom: 2px; }
 #adjustpanel .row .val { color: #8b8d94; min-width: 44px; text-align: right; }
 #adjustpanel .btnrow { display: flex; gap: 8px; margin-top: 10px; }
 #adjustpanel .btnrow.wrap { flex-wrap: wrap; }
 #adjustpanel .tip { color: #77797f; font-size: 12px; margin-top: 8px; line-height: 1.5; }
+
+/* 曲线面板 */
+#curvepanel { flex: 0 0 auto; border-top: 1px solid #33353c; }
+.curve-channels { display: flex; gap: 4px; margin-bottom: 8px; }
+.curve-channels .ch {
+  flex: 1; padding: 3px 0; font-size: 12px; text-align: center;
+}
+.curve-channels .ch.active { background: #2f6fed; border-color: #2f6fed; color: #fff; }
+.curve-channels .ch[data-ch="r"].active { background: #c0392b; border-color: #c0392b; }
+.curve-channels .ch[data-ch="g"].active { background: #2f8f46; border-color: #2f8f46; }
+.curve-channels .ch[data-ch="b"].active { background: #1f6fd0; border-color: #1f6fd0; }
+#curveEditor {
+  display: block; width: 100%; aspect-ratio: 1 / 1;
+  border: 1px solid #3c3e46; border-radius: 6px;
+  background: #16171b; touch-action: none; cursor: crosshair;
+}
+#curvepanel .btnrow { display: flex; gap: 8px; margin-top: 10px; }
+#curvepanel .btnrow button { flex: 1; }
+#curvepanel .tip { color: #77797f; font-size: 12px; margin-top: 8px; line-height: 1.5; }
 
 /* ================= 状态栏 ================= */
 #statusbar {

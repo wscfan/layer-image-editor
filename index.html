@@ -170,6 +170,23 @@
       <p class="tip">滑杆为实时预览，点「应用」后生效；一键滤镜立即作用于当前图层。滑杆数值相对原图，重置可取消预览。</p>
     </section>
 
+    <!-- 曲线面板 -->
+    <section class="panel" id="curvepanel">
+      <h2>曲线 · 当前图层</h2>
+      <div class="curve-channels">
+        <button type="button" class="ch active" data-ch="rgb">RGB</button>
+        <button type="button" class="ch" data-ch="r">R</button>
+        <button type="button" class="ch" data-ch="g">G</button>
+        <button type="button" class="ch" data-ch="b">B</button>
+      </div>
+      <canvas id="curveEditor"></canvas>
+      <div class="btnrow">
+        <button type="button" id="btnCurveApply" class="primary">应用曲线</button>
+        <button type="button" id="btnCurveReset">重置</button>
+      </div>
+      <p class="tip">拖动控制点调整色调 · 单击曲线添加控制点 · 双击控制点删除 · 背景为图层直方图</p>
+    </section>
+
   </aside>
 </main>
 
@@ -214,6 +231,7 @@
 <script src="js/layer.js"></script>
 <script src="js/history.js"></script>
 <script src="js/filters.js"></script>
+<script src="js/curves.js"></script>
 <script src="js/compositor.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/layerpanel.js"></script>

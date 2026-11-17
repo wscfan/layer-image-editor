@@ -33,6 +33,7 @@
           pixels: l.clonePixels(),
           text: l.text ? { ...l.text } : null,           // 文字源数据（保证撤销后仍可再编辑）
           textBox: l._textBox ? { ...l._textBox } : null,
+          curves: l.curves ? JSON.parse(JSON.stringify(l.curves)) : null, // 曲线定义
         })),
       };
     },
@@ -80,6 +81,8 @@
         l.ctx.drawImage(m.pixels, 0, 0);
         l.text = m.text ? { ...m.text } : null;
         l._textBox = m.textBox ? { ...m.textBox } : null;
+        l.curves = m.curves ? JSON.parse(JSON.stringify(m.curves)) : null;
+        l._curveVersion = (l._curveVersion || 0) + 1; // 使预览缓存失效
         s.stack.layers.push(l);
         PL.Layer._seq = Math.max(PL.Layer._seq, m.id);
       });

@@ -173,6 +173,7 @@
     PL.compositor.render();
     if (PL.tools && PL.tools.onDocChanged) PL.tools.onDocChanged();
     PL.layerpanel.render();
+    if (PL.curves) PL.curves.refresh(); // 曲线面板跟随图层变化
     PL.updateStatus();
     PL.updateHistoryButtons();
   };
@@ -338,6 +339,7 @@
     PL.tools.init();
     PL.layerpanel.init();
     PL.adjust.init();
+    PL.curves.init();
 
     initTopbar();
     initModal();
