@@ -162,21 +162,43 @@
     return { x, y, w, h };
   }
 
-  /** 在覆盖层上画形状预览（虚线框） */
+  /**
+   * 在覆盖层上实时预览形状：按当前颜色/样式/不透明度绘制真实效果，
+   * 叠加虚线边界与尺寸提示（尺寸文字在屏幕上恒定大小，不受缩放影响）。
+   */
   function drawShapePreview() {
     const ctx = PL.compositor.overlayCtx();
     PL.compositor.clearOverlay();
     const { start, cur, shift } = T.shape;
     const r = shapeRect(start, cur, shift);
+    if (r.w < 0.5 && r.h < 0.5) return; // 尚未拖出形状
+    const o = PL.state.toolOptions;
     const z = PL.state.zoom;
     ctx.save();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = Math.max(1, 1.2 / z);
-    ctx.setLineDash([6 / z, 4 / z]);
+    // 1) 实际效果：与 commitShape 完全一致的填充/描边
+    ctx.globalAlpha = o.opacity;
+    ctx.fillStyle = o.color;
+    ctx.strokeStyle = o.color;
+    ctx.lineWidth = o.strokeWidth;
     ctx.beginPath();
     if (PL.state.tool === 'rect') ctx.rect(r.x, r.y, r.w, r.h);
     else ctx.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2);
+    if (o.shapeMode === 'stroke') ctx.stroke();
+    else ctx.fill();
+    // 2) 虚线边界（复用同一路径），便于观察位置与大小
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1, 1.2 / z);
+    ctx.setLineDash([6 / z, 4 / z]);
     ctx.stroke();
+    // 3) 尺寸提示
+    ctx.setLineDash([]);
+    ctx.font = `${12 / z}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,.8)';
+    ctx.shadowBlur = 2 / z;
+    ctx.fillText(`${Math.round(r.w)} × ${Math.round(r.h)}`, r.x, Math.max(14 / z, r.y - 6 / z));
     ctx.restore();
   }
 
