@@ -112,33 +112,10 @@
     <section class="panel" id="layerpanel">
       <h2>图层</h2>
       <div id="layerlist"></div>
-      <div class="active-controls">
-        <div class="row">
-          <label for="layerOpacity">不透明度</label>
-          <input type="range" id="layerOpacity" min="0" max="100" value="100">
-          <span class="val" id="layerOpacityVal">100%</span>
-        </div>
-        <div class="row">
-          <label for="blendMode">混合模式</label>
-          <select id="blendMode">
-            <option value="source-over">正常</option>
-            <option value="multiply">正片叠底</option>
-            <option value="screen">滤色</option>
-            <option value="overlay">叠加</option>
-            <option value="darken">变暗</option>
-            <option value="lighten">变亮</option>
-            <option value="color-dodge">颜色减淡</option>
-            <option value="color-burn">颜色加深</option>
-            <option value="hard-light">强光</option>
-            <option value="soft-light">柔光</option>
-            <option value="difference">差值</option>
-            <option value="exclusion">排除</option>
-            <option value="hue">色相</option>
-            <option value="saturation">饱和度</option>
-            <option value="color">颜色</option>
-            <option value="luminosity">明度</option>
-          </select>
-        </div>
+      <div class="active-opacity">
+        <label for="layerOpacity">不透明度</label>
+        <input type="range" id="layerOpacity" min="0" max="100" value="100">
+        <span class="val" id="layerOpacityVal">100%</span>
       </div>
       <div class="layer-btns">
         <button type="button" id="btnAddLayer" class="primary" title="新建空白图层">＋ 新建图层</button>
@@ -150,51 +127,67 @@
           <button type="button" id="btnLayerProps" title="图层属性（名称/可见/不透明度/混合模式）">⚙</button>
           <button type="button" id="btnDelLayer" class="danger" title="删除图层">✕</button>
         </div>
+        <div class="adj-btns">
+          <button type="button" id="btnOpenAdjust" title="调整当前图层（亮度/对比/色调/滤镜）">🎚 调整</button>
+          <button type="button" id="btnOpenCurve" title="曲线调色当前图层">∿ 曲线</button>
+        </div>
       </div>
-    </section>
-
-    <!-- 调整面板 -->
-    <section class="panel" id="adjustpanel">
-      <h2>调整 · 当前图层</h2>
-      <div class="row"><label>亮度</label><input type="range" id="adjBrightness" min="-100" max="100" value="0"><span class="val" id="adjBrightnessVal">0</span></div>
-      <div class="row"><label>对比度</label><input type="range" id="adjContrast" min="-100" max="100" value="0"><span class="val" id="adjContrastVal">0</span></div>
-      <div class="row"><label>饱和度</label><input type="range" id="adjSaturation" min="-100" max="100" value="0"><span class="val" id="adjSaturationVal">0</span></div>
-      <div class="row"><label>色相</label><input type="range" id="adjHue" min="-180" max="180" value="0"><span class="val" id="adjHueVal">0°</span></div>
-      <div class="row"><label>模糊</label><input type="range" id="adjBlur" min="0" max="100" value="0"><span class="val" id="adjBlurVal">0.0px</span></div>
-      <div class="btnrow">
-        <button type="button" id="btnApplyAdjust" class="primary">应用</button>
-        <button type="button" id="btnResetAdjust">重置</button>
-      </div>
-      <h3>一键滤镜</h3>
-      <div class="btnrow wrap">
-        <button type="button" data-filter="grayscale">黑白</button>
-        <button type="button" data-filter="invert">反色</button>
-        <button type="button" data-filter="sepia">复古</button>
-        <button type="button" data-filter="sharpen">锐化</button>
-        <button type="button" data-filter="pixelate">像素化</button>
-        <button type="button" data-filter="blur">模糊 4px</button>
-      </div>
-      <p class="tip">滑杆为实时预览，点「应用」后生效；一键滤镜立即作用于当前图层。滑杆数值相对原图，重置可取消预览。</p>
-    </section>
-
-    <!-- 曲线面板 -->
-    <section class="panel" id="curvepanel">
-      <h2>曲线 · 当前图层</h2>
-      <div class="curve-channels">
-        <button type="button" class="ch active" data-ch="rgb">RGB</button>
-        <button type="button" class="ch" data-ch="r">R</button>
-        <button type="button" class="ch" data-ch="g">G</button>
-        <button type="button" class="ch" data-ch="b">B</button>
-      </div>
-      <canvas id="curveEditor"></canvas>
-      <div class="btnrow">
-        <button type="button" id="btnCurveApply" class="primary">应用曲线</button>
-        <button type="button" id="btnCurveReset">重置</button>
-      </div>
-      <p class="tip">拖动控制点调整色调 · 单击曲线加点 · 双击控制点删除 · 背景为直方图</p>
     </section>
 
   </aside>
+
+<!-- ============ 调整 / 曲线 弹框 ============ -->
+<div id="adjCurModal" class="adjmodal hidden">
+  <div class="adjmodal-card">
+    <div class="adjmodal-head">
+      <div class="adjmodal-tabs">
+        <button type="button" id="tabAdjust" class="tab active">调节</button>
+        <button type="button" id="tabCurve" class="tab">曲线</button>
+      </div>
+      <button type="button" id="btnCloseAdjCur" class="adjmodal-close" title="关闭 (Esc)">✕</button>
+    </div>
+    <div class="adjmodal-body">
+      <!-- 调整面板 -->
+      <section id="adjustpanel">
+        <div class="row"><label>亮度</label><input type="range" id="adjBrightness" min="-100" max="100" value="0"><span class="val" id="adjBrightnessVal">0</span></div>
+        <div class="row"><label>对比度</label><input type="range" id="adjContrast" min="-100" max="100" value="0"><span class="val" id="adjContrastVal">0</span></div>
+        <div class="row"><label>饱和度</label><input type="range" id="adjSaturation" min="-100" max="100" value="0"><span class="val" id="adjSaturationVal">0</span></div>
+        <div class="row"><label>色相</label><input type="range" id="adjHue" min="-180" max="180" value="0"><span class="val" id="adjHueVal">0°</span></div>
+        <div class="row"><label>模糊</label><input type="range" id="adjBlur" min="0" max="100" value="0"><span class="val" id="adjBlurVal">0.0px</span></div>
+        <div class="btnrow">
+          <button type="button" id="btnApplyAdjust" class="primary">应用</button>
+          <button type="button" id="btnResetAdjust">重置</button>
+        </div>
+        <h3>一键滤镜</h3>
+        <div class="btnrow wrap">
+          <button type="button" data-filter="grayscale">黑白</button>
+          <button type="button" data-filter="invert">反色</button>
+          <button type="button" data-filter="sepia">复古</button>
+          <button type="button" data-filter="sharpen">锐化</button>
+          <button type="button" data-filter="pixelate">像素化</button>
+          <button type="button" data-filter="blur">模糊 4px</button>
+        </div>
+        <p class="tip">滑杆为实时预览，点「应用」后生效；一键滤镜立即作用于当前图层。滑杆数值相对原图，重置可取消预览。</p>
+      </section>
+
+      <!-- 曲线面板 -->
+      <section id="curvepanel" class="hidden">
+        <div class="curve-channels">
+          <button type="button" class="ch active" data-ch="rgb">RGB</button>
+          <button type="button" class="ch" data-ch="r">R</button>
+          <button type="button" class="ch" data-ch="g">G</button>
+          <button type="button" class="ch" data-ch="b">B</button>
+        </div>
+        <canvas id="curveEditor"></canvas>
+        <div class="btnrow">
+          <button type="button" id="btnCurveApply" class="primary">应用曲线</button>
+          <button type="button" id="btnCurveReset">重置</button>
+        </div>
+        <p class="tip">拖动控制点调整色调 · 单击曲线加点 · 双击控制点删除 · 背景为直方图</p>
+      </section>
+    </div>
+  </div>
+</div>
 </main>
 
 <!-- ============ 状态栏 ============ -->

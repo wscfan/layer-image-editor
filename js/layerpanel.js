@@ -141,16 +141,6 @@
           PL.history.commit('图层不透明度');
         }
       });
-
-      // 当前图层：混合模式
-      const blend = document.getElementById('blendMode');
-      blend.addEventListener('change', () => {
-        const l = PL.state.stack && PL.state.stack.getById(PL.state.activeId);
-        if (!l) return;
-        l.blendMode = blend.value;
-        PL.history.commit('混合模式');
-        PL.refreshAll();
-      });
     },
 
     /** 重建整个列表，并同步当前图层的属性控件 */
@@ -163,16 +153,12 @@
 
       const active = s.stack.getById(s.activeId);
       const op = document.getElementById('layerOpacity');
-      const blend = document.getElementById('blendMode');
       if (active) {
         op.disabled = false;
-        blend.disabled = false;
         op.value = Math.round(active.opacity * 100);
         document.getElementById('layerOpacityVal').textContent = op.value + '%';
-        blend.value = active.blendMode;
       } else {
         op.disabled = true;
-        blend.disabled = true;
       }
     },
   };

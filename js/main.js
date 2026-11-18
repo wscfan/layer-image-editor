@@ -246,8 +246,12 @@
   function initKeyboard() {
     window.addEventListener('keydown', (e) => {
       // 弹框打开时只处理 Esc，避免误触发工具快捷键
-      if (PL.modal && PL.modal.isOpen()) {
-        if (e.key === 'Escape') PL.modal.cancel();
+      const adjCurOpen = window.__adjCurOpen ? window.__adjCurOpen() : false;
+      if (adjCurOpen || (PL.modal && PL.modal.isOpen())) {
+        if (e.key === 'Escape') {
+          if (adjCurOpen) { if (window.__adjCurClose) window.__adjCurClose(); }
+          else if (PL.modal) PL.modal.cancel();
+        }
         return;
       }
       if (isTyping(e)) return;
@@ -312,7 +316,40 @@
   }
 
   function initModal() {
-    // 弹框统一由 PL.dialogs / PL.modal 管理，这里无需额外处理
+    // 调整 / 曲线 弹框：开关、标签切换，并在打开时屏蔽全局快捷键
+    const modal = document.getElementById('adjCurModal');
+    const tabAdjust = document.getElementById('tabAdjust');
+    const tabCurve = document.getElementById('tabCurve');
+    const adjustSection = document.getElementById('adjustpanel');
+    const curveSection = document.getElementById('curvepanel');
+
+    const setTab = (which) => {
+      const isAdj = which === 'adjust';
+      tabAdjust.classList.toggle('active', isAdj);
+      tabCurve.classList.toggle('active', !isAdj);
+      adjustSection.classList.toggle('hidden', !isAdj);
+      curveSection.classList.toggle('hidden', isAdj);
+    };
+    const open = (tab) => {
+      modal.classList.remove('hidden');
+      setTab(tab);
+      if (tab === 'curve') PL.curves.refresh(); // 曲线画布需可见后再绘（尺寸取 clientWidth）
+    };
+    const close = () => modal.classList.add('hidden');
+
+    document.getElementById('btnOpenAdjust').addEventListener('click', () => open('adjust'));
+    document.getElementById('btnOpenCurve').addEventListener('click', () => open('curve'));
+    tabAdjust.addEventListener('click', () => setTab('adjust'));
+    tabCurve.addEventListener('click', () => setTab('curve'));
+    document.getElementById('btnCloseAdjCur').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    modal.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // 弹框内按键不回传给全局快捷键
+      if (e.key === 'Escape') close();
+    });
+    // 供全局快捷键判断当前弹框是否打开
+    window.__adjCurOpen = () => !modal.classList.contains('hidden');
+    window.__adjCurClose = close;
   }
 
   function initOptions() {
