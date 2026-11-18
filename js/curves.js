@@ -412,6 +412,7 @@
     const img = layer.ctx.getImageData(0, 0, layer.width, layer.height);
     applyLUTToData(img, luts);
     layer.ctx.putImageData(img, 0, 0);
+    layer.markDirty();
     layer.curves = null;
     bumpVersion(layer);
     PL.history.commit('应用曲线');

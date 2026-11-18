@@ -66,6 +66,7 @@
       c.globalCompositeOperation = top.blendMode;
       if (top.visible) c.drawImage(top.canvas, 0, 0);
       c.restore();
+      below.markDirty();
       S.stack.remove(top.id);
       S.activeId = below.id;
       PL.history.commit('向下合并');
@@ -284,6 +285,7 @@
         e.preventDefault();
         PL.bakeIfText(l); // 清空像素后文字数据与像素不再对应，需固化
         l.ctx.clearRect(0, 0, l.width, l.height);
+        l.markDirty();
         PL.history.commit('清空图层');
         PL.refreshAll();
       }

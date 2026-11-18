@@ -51,8 +51,21 @@
       this.setZoom(Math.max(0.05, Math.min(zw, zh)));
     },
 
-    /** 核心：把所有可见图层按 底→顶 合成到主画布 */
+    /** 核心：把所有可见图层按 底→顶 合成到主画布。
+     *  普通调用走 rAF 合并：同一帧内多次 render 只合成一次，
+     *  避免高频率手势（拖笔画/移动/缩放）每帧全量重绘。
+     */
     render() {
+      if (this._rafReq) return;   // 本帧已排队
+      this._rafReq = requestAnimationFrame(() => {
+        this._rafReq = null;
+        this.renderSync();
+      });
+    },
+
+    /** 同步渲染：立即合成到主画布（并清掉未执行的 rAF 队列） */
+    renderSync() {
+      this._rafReq = null;
       const s = PL.state, ctx = els.stageCtx, d = s.doc;
       ctx.clearRect(0, 0, d.width, d.height);
       for (const l of s.stack.layers) {

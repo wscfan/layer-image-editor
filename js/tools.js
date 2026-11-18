@@ -124,6 +124,7 @@
     c.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
     c.drawImage(buf, 0, 0);
     c.restore();
+    T.stroke.layer.markDirty();
     PL.render();
   }
 
@@ -154,6 +155,7 @@
     c.clearRect(0, 0, layer.width, layer.height);
     c.drawImage(base, dx, dy);
     c.restore();
+    layer.markDirty();
     PL.render();
   }
 
@@ -234,6 +236,7 @@
     if (o.shapeMode === 'stroke') c.stroke();
     else c.fill();
     c.restore();
+    layer.markDirty();
     PL.history.commit('绘制形状');
     PL.refreshAll();
   }
@@ -311,6 +314,7 @@
     c.drawImage(base, 0, 0);
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.restore();
+    layer.markDirty();
     PL.render();
   }
 
@@ -387,6 +391,7 @@
       if (y < h - 1) stack.push(pi + w);
     }
     ctx.putImageData(img, 0, 0);
+    layer.markDirty();
     return true;
   }
 
@@ -410,6 +415,7 @@
     c.globalAlpha = t.opacity != null ? t.opacity : 1;
     t.content.split('\n').forEach((line, i) => c.fillText(line, t.x, t.y + i * lh));
     c.restore();
+    layer.markDirty();
     layer._textBox = measureTextBox(t);
   }
 
@@ -543,6 +549,7 @@
 
   /** 从合成结果取色 */
   function pickColor(p) {
+    PL.compositor.renderSync(); // 取色必须读当前合成结果：立即刷新（并清掉未执行的 rAF）
     const stage = PL.compositor.stage();
     const x = Math.floor(p.x), y = Math.floor(p.y);
     if (x < 0 || y < 0 || x >= stage.width || y >= stage.height) return;

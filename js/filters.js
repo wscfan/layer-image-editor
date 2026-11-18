@@ -31,6 +31,7 @@
       tc.drawImage(layer.canvas, 0, 0);
       layer.ctx.clearRect(0, 0, layer.width, layer.height);
       layer.ctx.drawImage(tmp, 0, 0);
+      layer.markDirty();
     },
 
     grayscale(layer) { this.applyFilter(layer, 'grayscale(1)'); },
@@ -66,6 +67,7 @@
         }
       }
       ctx.putImageData(out, 0, 0);
+      layer.markDirty();
     },
 
     /** 像素化：block 为目标格子边长（px） */
@@ -82,6 +84,7 @@
       layer.ctx.clearRect(0, 0, w, h);
       layer.ctx.drawImage(tmp, 0, 0, sw, sh, 0, 0, w, h);
       layer.ctx.imageSmoothingEnabled = true;
+      layer.markDirty();
     },
   };
 })();

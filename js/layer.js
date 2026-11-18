@@ -42,6 +42,7 @@
       this.visible = true;
       this.opacity = 1;                     // 图层不透明度 0~1
       this.blendMode = 'source-over';       // 混合模式（globalCompositeOperation）
+      this._pxv = 0;                        // 像素版本：像素变更时自增，供历史记录按层去重快照
       this.canvas = document.createElement('canvas');
       this.canvas.width = width;
       this.canvas.height = height;
@@ -51,6 +52,9 @@
         this.ctx.fillRect(0, 0, width, height);
       }
     }
+
+    /** 像素被直接修改后调用，使历史记录能识别「这一层变了」 */
+    markDirty() { this._pxv = (this._pxv || 0) + 1; }
 
     /** 像素深拷贝（撤销快照 / 移动基线 / 笔画基线） */
     clonePixels() {
