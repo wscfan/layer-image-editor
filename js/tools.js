@@ -15,6 +15,7 @@
     shape: null,   // 矩形 / 椭圆
     moveOp: null,  // 移动图层
     xform: null,   // 缩放 / 变换
+    pan: null,     // 画布平移（抓手工具）
   };
 
   /* ================= 小工具函数 ================= */
@@ -589,6 +590,14 @@
     const p = PL.compositor.toDoc(e);
     const tool = s.tool;
 
+    if (s.spacePan || tool === 'pan') {
+      T.pan = { sx: e.clientX, sy: e.clientY, px: s.pan.x, py: s.pan.y };
+      T.drawing = true;
+      e.target.setPointerCapture(e.pointerId);
+      PL.compositor.stage().style.cursor = 'grabbing';
+      return;
+    }
+
     if (tool === 'picker') { pickColor(p); return; }
 
     if (tool === 'fill') {
@@ -666,9 +675,16 @@
     if (PL.updatePos) PL.updatePos(p);
     const s = PL.state;
 
+    if (T.pan) {
+      PL.state.pan.x = T.pan.px + (e.clientX - T.pan.sx);
+      PL.state.pan.y = T.pan.py + (e.clientY - T.pan.sy);
+      PL.compositor.applyPan();
+      return;
+    }
+
     if (!T.drawing) {
       if (s.tool === 'brush' || s.tool === 'eraser') {
-        drawBrushCursor(p);
+        if (!s.spacePan) drawBrushCursor(p); // 空格平移中不显示笔刷光圈
       } else if (s.tool === 'scale') {
         // 悬停：显示变换框并根据位置切换光标
         const box = refreshBBox();
@@ -723,6 +739,13 @@
   }
 
   function onPointerUp() {
+    if (T.pan) {
+      T.pan = null;
+      T.drawing = false;
+      PL.compositor.stage().style.cursor = PL.state.spacePan ? 'grab'
+        : ({ move: 'move', text: 'text', scale: 'default', pan: 'grab' }[PL.state.tool] || 'crosshair');
+      return;
+    }
     if (T.stroke) {
       endStroke();
     } else if (T.shape) {

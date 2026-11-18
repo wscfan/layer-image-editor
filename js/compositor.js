@@ -11,6 +11,7 @@
       els.stage = document.getElementById('stage');
       els.overlay = document.getElementById('overlay');
       els.area = document.getElementById('canvasarea');
+      els.stagewrap = document.getElementById('stagewrap');
       els.stageCtx = els.stage.getContext('2d');
       els.overlayCtx = els.overlay.getContext('2d');
     },
@@ -38,8 +39,49 @@
       els.stage.style.height = (d.height * z) + 'px';
       els.overlay.style.width = els.stage.style.width;
       els.overlay.style.height = els.stage.style.height;
+      this.applyPan();
       if (PL.updateStatus) PL.updateStatus();
       if (PL.tools && PL.tools.onZoomChanged) PL.tools.onZoomChanged();
+    },
+
+    /** 应用平移：在居中基础上再平移 pan 像素（transform 承载，两图层一起移动） */
+    applyPan() {
+      if (!els.stagewrap) return;
+      const p = PL.state.pan;
+      els.stagewrap.style.transform =
+        `translate(-50%, -50%) translate(${p.x}px, ${p.y}px)`;
+    },
+
+    /** 把缩放设为绝对值 z1，并保持屏幕坐标 (clientX, clientY) 下的画面点不动 */
+    zoomTo(z1, clientX, clientY) {
+      const d = PL.state.doc;
+      const z0 = PL.state.zoom;
+      z1 = Math.min(8, Math.max(0.05, z1));
+      if (z1 === z0 || !d.width || !d.height) return;
+      const r = els.area.getBoundingClientRect();
+      const pan = PL.state.pan;
+      const areaCx = r.left + r.width / 2;
+      const areaCy = r.top + r.height / 2;
+      const W0 = d.width * z0, H0 = d.height * z0;
+      const W1 = d.width * z1, H1 = d.height * z1;
+      // 旧画布左上角（居中 + pan）
+      const left0 = areaCx + pan.x - W0 / 2;
+      const top0 = areaCy + pan.y - H0 / 2;
+      // 光标相对画布的归一化位置
+      const u = (clientX - left0) / W0;
+      const v = (clientY - top0) / H0;
+      // 缩放后让同一归一化点仍停留在光标下
+      const left1 = clientX - u * W1;
+      const top1 = clientY - v * H1;
+      pan.x = left1 - areaCx + W1 / 2;
+      pan.y = top1 - areaCy + H1 / 2;
+      PL.state.zoom = z1;
+      this.applyZoom();
+    },
+
+    /** 以当前缩放乘以 factor，并以 (clientX, clientY) 为锚点 */
+    zoomAt(factor, clientX, clientY) {
+      this.zoomTo(PL.state.zoom * factor, clientX, clientY);
     },
 
     /** 适应窗口 */
@@ -48,6 +90,8 @@
       const pad = 60;
       const zw = (els.area.clientWidth - pad) / d.width;
       const zh = (els.area.clientHeight - pad) / d.height;
+      PL.state.pan.x = 0;
+      PL.state.pan.y = 0;
       this.setZoom(Math.max(0.05, Math.min(zw, zh)));
     },
 

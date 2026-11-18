@@ -80,10 +80,11 @@ label { color: #9a9ca3; }
 #toolrail .tool.active { background: #2f6fed; border-color: #2f6fed; color: #fff; }
 
 /* 画布区 */
-#canvasarea { flex: 1; overflow: auto; display: flex; background: #141519; position: relative; }
+#canvasarea { flex: 1; overflow: hidden; background: #141519; position: relative; }
 #canvasarea.dragging { outline: 2px dashed #2f6fed; outline-offset: -4px; }
 #stagewrap {
-  margin: auto; position: relative; flex: none;
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);   /* 居中由 transform 承载，平移(s)在 JS 中叠加 */
   background: repeating-conic-gradient(#3b3c42 0% 25%, #303137 0% 50%);
   background-size: 16px 16px;
   box-shadow: 0 0 0 1px #000, 0 10px 34px rgba(0, 0, 0, .55);

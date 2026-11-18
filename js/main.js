@@ -203,7 +203,8 @@
       o.classList.toggle('hidden', !show);
     });
     const stage = PL.compositor.stage();
-    stage.style.cursor = { move: 'move', text: 'text', scale: 'default' }[tool] || 'crosshair';
+    stage.style.cursor = PL.state.spacePan ? 'grab'
+      : ({ move: 'move', text: 'text', scale: 'default', pan: 'grab' }[tool] || 'crosshair');
     PL.compositor.clearOverlay();
     if (PL.tools.activate) PL.tools.activate(tool);
   }
@@ -272,7 +273,7 @@
 
       const map = {
         b: 'brush', e: 'eraser', m: 'move', g: 'fill',
-        r: 'rect', o: 'ellipse', t: 'text', i: 'picker', s: 'scale',
+        r: 'rect', o: 'ellipse', t: 'text', i: 'picker', s: 'scale', h: 'pan',
       };
       if (map[k]) { setTool(map[k]); return; }
 
@@ -294,6 +295,27 @@
         PL.refreshAll();
       }
     });
+
+    // 空格 + 拖动 = 临时平移画布（任意工具下）
+    const toolCursor = () =>
+      ({ move: 'move', text: 'text', scale: 'default', pan: 'grab' }[S.tool]) || 'crosshair';
+    const setSpacePan = (on) => {
+      S.spacePan = on;
+      if (!PL.tools.drawing) PL.compositor.stage().style.cursor = on ? 'grab' : toolCursor();
+    };
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      if (isTyping(e)) return;
+      if ((PL.modal && PL.modal.isOpen()) || (window.__adjCurOpen && window.__adjCurOpen())) return;
+      if (PL.tools.drawing) return; // 正在绘制 / 变换时不平移
+      if (!S.spacePan) setSpacePan(true);
+      e.preventDefault(); // 阻止空格滚动页面 / 触发聚焦的按钮
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      if (S.spacePan) setSpacePan(false);
+    });
+    window.addEventListener('blur', () => { if (S.spacePan) setSpacePan(false); });
   }
 
   /* ================= 各模块初始化 ================= */
@@ -382,11 +404,31 @@
     document.getElementById('zoomOut').addEventListener('click', () => PL.compositor.zoomOut());
     document.getElementById('zoomFit').addEventListener('click', () => PL.compositor.fit());
     document.getElementById('zoom100').addEventListener('click', () => PL.compositor.setZoom(1));
-    // Ctrl/⌘ + 滚轮缩放
-    PL.compositor.area().addEventListener('wheel', (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
+    // 滚轮缩放：仅 Ctrl/⌘ + 滚轮触发；目标值累加 + rAF 指数缓动，缩放更慢更丝滑
+    const area = PL.compositor.area();
+    let targetZoom = 0, anchorX = 0, anchorY = 0, zoomRaf = 0;
+    const easeZoom = () => {
+      zoomRaf = 0;
+      const ratio = targetZoom / PL.state.zoom;
+      if (Math.abs(ratio - 1) < 0.002) {           // 足够接近则收尾
+        PL.compositor.zoomTo(targetZoom, anchorX, anchorY);
+        targetZoom = PL.state.zoom;
+        return;
+      }
+      // 每帧走完剩余差距的 30%，指数逼近，观感更顺滑
+      PL.compositor.zoomTo(PL.state.zoom * (1 + (ratio - 1) * 0.30), anchorX, anchorY);
+      zoomRaf = requestAnimationFrame(easeZoom);
+    };
+    area.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;         // 直接滚轮不缩放，仅 Ctrl/⌘ + 滚轮
       e.preventDefault();
-      e.deltaY < 0 ? PL.compositor.zoomIn() : PL.compositor.zoomOut();
+      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // 行→像素
+      anchorX = e.clientX; anchorY = e.clientY;
+      if (!zoomRaf) targetZoom = PL.state.zoom;     // 新一轮动画从当前值起步
+      // 每事件按滚动量连续缩放，系数远小于原来的固定 1.1，滚得慢一点
+      const f = Math.exp(-delta * 0.0008);
+      targetZoom = Math.min(8, Math.max(0.05, targetZoom * f));
+      if (!zoomRaf) zoomRaf = requestAnimationFrame(easeZoom);
     }, { passive: false });
   }
 

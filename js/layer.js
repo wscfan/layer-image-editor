@@ -29,6 +29,8 @@
     },
     previewFilter: '',   // 调整面板的实时预览滤镜（仅当前图层）
     previewLayerId: null,
+    pan: { x: 0, y: 0 }, // 画布平移偏移（屏幕像素，相对居中位置）
+    spacePan: false,     // 是否按住空格进入临时平移模式
     pristine: true,      // 文档是否未被编辑（首次导入图片时自适应画布尺寸）
   };
 
