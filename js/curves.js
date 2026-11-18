@@ -23,6 +23,7 @@
   let activeCh = 'rgb';
   let drag = null;      // { layerId, ch, index }
   let hist = null;      // 当前图层直方图
+  let visible = false;  // 曲线面板是否可见（不可见时跳过直方图统计）
   let previewCache = { key: null, canvas: null };
 
   /* ==================== 曲线数学 ==================== */
@@ -33,7 +34,7 @@
   });
 
   function isIdentityCurve(c) {
-    return c.length === 2 && c[0].x === 0 && c[0].y === 0 && c[1].x === 255 && c[1].y === 255;
+    return !!c && c.length === 2 && c[0].x === 0 && c[0].y === 0 && c[1].x === 255 && c[1].y === 255;
   }
 
   function isIdentityCurves(cs) {
@@ -146,7 +147,9 @@
 
   /** 返回经过曲线处理的图层画布（带缓存） */
   function previewCanvas(layer) {
-    const key = layer.id + ':' + (layer._curveVersion || 0);
+    // 键必须包含像素版本 _pxv：画笔等操作只递增 _pxv，
+    // 若键里没有它，带曲线的图层上画画后会命中旧缓存，笔迹被整层旧图覆盖。
+    const key = layer.id + ':' + (layer._pxv || 0) + ':' + (layer._curveVersion || 0);
     if (previewCache.key === key && previewCache.canvas) return previewCache.canvas;
     const c = document.createElement('canvas');
     c.width = layer.width;
@@ -178,14 +181,34 @@
     return lut[Math.max(0, Math.min(255, Math.round(x)))];
   }
 
-  /** 计算当前图层的直方图（按当前通道） */
+  /**
+   * 计算当前图层的直方图（按当前通道）。
+   *
+   * 优化点：
+   * 1) 先把图层缩到 256×256 再统计 —— 读回量从 w*h 降到 65536 像素，
+   *    对直方图展示精度无影响，却省掉了整幅 getImageData 的开销；
+   * 2) 按 (图层id@像素版本@通道) 缓存，像素没变就不重算。
+   */
+  const HIST_SAMPLE_PX = 256;   // 缩略图边长
+  let histKey = null;
+
   function computeHistogram(layer) {
     const bins = new Uint32Array(256);
-    if (!layer) return { bins, max: 1 };
-    const img = layer.ctx.getImageData(0, 0, layer.width, layer.height);
-    const d = img.data;
-    const step = Math.max(1, Math.floor(d.length / 4 / 200000)); // 最多采样 20 万像素
-    for (let i = 0; i < d.length; i += 4 * step) {
+    if (!layer) { histKey = null; return { bins, max: 1 }; }
+    const key = layer.id + '@' + (layer._pxv || 0) + '@' + activeCh;
+    if (key === histKey && hist) return hist;
+
+    // 在缩略图上统计，避免整幅读回
+    const s = Math.min(HIST_SAMPLE_PX / layer.width, HIST_SAMPLE_PX / layer.height, 1);
+    const tw = Math.max(1, Math.round(layer.width * s));
+    const th = Math.max(1, Math.round(layer.height * s));
+    const tmp = document.createElement('canvas');
+    tmp.width = tw;
+    tmp.height = th;
+    const tc = tmp.getContext('2d', { willReadFrequently: true });
+    tc.drawImage(layer.canvas, 0, 0, tw, th);
+    const d = tc.getImageData(0, 0, tw, th).data;
+    for (let i = 0; i < d.length; i += 4) {
       let v;
       switch (activeCh) {
         case 'r': v = d[i]; break;
@@ -197,7 +220,9 @@
     }
     let max = 1;
     for (let i = 0; i < 256; i++) if (bins[i] > max) max = bins[i];
-    return { bins, max };
+    hist = { bins, max };
+    histKey = key;
+    return hist;
   }
 
   function draw() {
@@ -330,7 +355,8 @@
       drag = { layerId: layer.id, ch: activeCh, index: ni, moved: true };
       bumpVersion(layer);
       PL.render();
-      PL.layerpanel.render();
+      // 不重建图层面板：缩略图画的是原始像素，曲线调整不会改变它，
+      // 每帧重建 DOM + 重绘缩略图纯属浪费。
       cvs.setPointerCapture(e.pointerId);
       draw();
     }
@@ -370,7 +396,6 @@
     drag.moved = true;
     bumpVersion(layer);
     PL.render();
-    PL.layerpanel.render();
     draw();
   }
 
@@ -396,7 +421,6 @@
       cs[activeCh].splice(idx, 1);
       bumpVersion(layer);
       PL.render();
-      PL.layerpanel.render();
       PL.history.commit('删除曲线控制点');
       draw();
     }
@@ -457,9 +481,19 @@
 
     /** 图层/文档变化后刷新：重算直方图并重绘 */
     refresh() {
+      if (!visible) return;   // 面板不可见时不统计直方图（避免每次提交都读回像素）
       hist = computeHistogram(currentLayer());
       draw();
     },
+
+    /** 面板可见性：不可见时跳过直方图统计 */
+    setVisible(v) {
+      visible = !!v;
+      if (visible) this.refresh();
+      else { hist = null; histKey = null; }
+    },
+
+    get visible() { return visible; },
 
     /** 供合成器使用：图层是否带有效曲线 */
     hasCurves,

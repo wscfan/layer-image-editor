@@ -18,6 +18,8 @@
     pan: null,     // 画布平移（抓手工具）
   };
 
+  const STAMP_SPACING_RATIO = 0.12;  // 印章间距 = 笔刷直径 × 该比例
+
   /* ================= 小工具函数 ================= */
 
   function hexToRgb(hex) {
@@ -54,24 +56,46 @@
 
   /* ================= 画笔 / 橡皮 ================= */
 
-  /** 盖一个印章（径向渐变实现软边） */
-  function stamp(ctx, x, y, size, color, hardness) {
+  /**
+   * 笔尖预渲染缓存：把「圆形软边笔尖」预渲染成小图，绘制时直接 drawImage。
+   * 避免每个印章都 createRadialGradient（长笔画 + 大笔刷时是成千上万次对象分配）。
+   */
+  let tipCache = { key: null, canvas: null };
+
+  function brushTip(size, hardness, color) {
+    const key = size + '|' + hardness.toFixed(3) + '|' + color;
+    if (tipCache.key === key) return tipCache.canvas;
     const r = Math.max(0.5, size / 2);
+    const s = Math.max(2, Math.ceil(r * 2) + 2);   // 画布边长（含 1px 余量）
+    const c = document.createElement('canvas');
+    c.width = s;
+    c.height = s;
+    const g = c.getContext('2d');
+    const cx = s / 2, cy = s / 2;
     if (hardness >= 0.98) {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-      return;
+      g.fillStyle = color;
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fill();
+    } else {
+      const grd = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+      grd.addColorStop(0, rgbaStr(color, 1));
+      grd.addColorStop(Math.max(0.01, hardness), rgbaStr(color, 1));
+      grd.addColorStop(1, rgbaStr(color, 0));
+      g.fillStyle = grd;
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fill();
     }
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, rgbaStr(color, 1));
-    g.addColorStop(Math.max(0.01, hardness), rgbaStr(color, 1));
-    g.addColorStop(1, rgbaStr(color, 0));
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
+    tipCache = { key, canvas: c };
+    return c;
+  }
+
+  /** 盖一个印章（复用预渲染笔尖） */
+  function stamp(ctx, x, y, size, color, hardness) {
+    const tip = brushTip(size, hardness, color);
+    const s = tip.width;
+    ctx.drawImage(tip, x - s / 2, y - s / 2);
   }
 
   /** 沿路径以固定间距盖章 */
@@ -80,7 +104,7 @@
     const dx = to.x - from.x, dy = to.y - from.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 0.01) return;
-    const step = Math.max(0.8, o.size * 0.12);
+    const step = Math.max(0.8, o.size * STAMP_SPACING_RATIO);
     const n = Math.ceil(dist / step);
     for (let i = 1; i <= n; i++) {
       stamp(ctx, from.x + dx * i / n, from.y + dy * i / n, o.size, o.color, o.hardness);
@@ -99,6 +123,7 @@
       buf,
       bufCtx: buf.getContext('2d'),
       last: p,
+      opacity: PL.state.toolOptions.opacity, // 笔画内不透明度固定，避免中途改动导致区域间浓淡不一
     };
     stampLine(T.stroke.bufCtx, p, p, PL.state.toolOptions);
     compositeStroke();
@@ -106,22 +131,29 @@
   }
 
   function moveStroke(p) {
-    stampLine(T.stroke.bufCtx, T.stroke.last, p, PL.state.toolOptions);
+    const o = PL.state.toolOptions;
+    const from = T.stroke.last;
+    stampLine(T.stroke.bufCtx, from, p, o);
     T.stroke.last = p;
     compositeStroke();
   }
 
-  /** 基线 + 笔迹缓冲 → 图层（橡皮用 destination-out 抠除） */
+  /**
+   * 基线 + 笔迹缓冲 → 图层（橡皮用 destination-out 抠除）。
+   *
+   * 实测：曾改为「只重绘脏矩形」，但在 willReadFrequently 的软件渲染画布上，
+   * 带源矩形的 drawImage 会走慢路径（1440 次合成 41ms → 333ms）。
+   * 因此保留全画布合成（3 次整幅操作走快速内存拷贝路径，约 0.03ms/次）。
+   */
   function compositeStroke() {
     const { layer, base, buf, erase } = T.stroke;
-    const o = PL.state.toolOptions;
     const c = layer.ctx;
     c.save();
     c.globalAlpha = 1;
     c.globalCompositeOperation = 'source-over';
     c.clearRect(0, 0, layer.width, layer.height);
     c.drawImage(base, 0, 0);
-    c.globalAlpha = o.opacity;
+    c.globalAlpha = T.stroke.opacity;
     c.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
     c.drawImage(buf, 0, 0);
     c.restore();
@@ -219,11 +251,12 @@
   function commitShape() {
     const layer = T.shape.layer;
     const r = shapeRect(T.shape.start, T.shape.cur, T.shape.shift);
-    PL.bakeIfText(layer); // 形状直接改像素，文字图层需固化
     PL.compositor.clearOverlay();
     T.shape = null;
     T.drawing = false;
-    if (r.w < 1 || r.h < 1) return; // 误点，不产生历史
+    // 尺寸检查必须放在固化之前：误点时不应把文字图层固化成不可编辑的像素层
+    if (r.w < 1 || r.h < 1) return;
+    PL.bakeIfText(layer); // 形状直接改像素，文字图层需固化
     const o = PL.state.toolOptions;
     const c = layer.ctx;
     c.save();
@@ -258,38 +291,42 @@
 
   function oppositeHandle(h) { return { nw: 'se', se: 'nw', ne: 'sw', sw: 'ne' }[h]; }
 
-  /** 计算图层不透明内容的包围盒（alpha > 0），空图层返回 null */
+  /**
+   * 计算图层不透明内容的包围盒（alpha > 0），空图层返回 null。
+   * 用 Uint32Array 视图逐像素扫描，比逐字节访问快 3~4 倍。
+   */
   function getContentBBox(layer) {
     const w = layer.width, h = layer.height;
-    const d = layer.ctx.getImageData(0, 0, w, h).data;
+    const img = layer.ctx.getImageData(0, 0, w, h);
+    const px = new Uint32Array(img.data.buffer);
     let minX = w, minY = h, maxX = -1, maxY = -1;
-    for (let y = 0; y < h; y++) {
-      const row = y * w * 4;
-      for (let x = 0; x < w; x++) {
-        if (d[row + x * 4 + 3] !== 0) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
+    for (let i = 0; i < px.length; i++) {
+      if ((px[i] >>> 24) === 0) continue;   // alpha = 0
+      const x = i % w, y = (i / w) | 0;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
     return maxX < 0 ? null : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
   }
 
-  let bboxCache = null; // { layerId, box }，像素变化由 onDocChanged 强制刷新
+  let bboxCache = null; // { layerId, pxv, box }
 
   function activeLayer() {
     return PL.state.stack ? PL.state.stack.getById(PL.state.activeId) : null;
   }
 
-  /** 取当前图层内容包围盒（按图层缓存） */
+  /** 取当前图层内容包围盒（按 图层id@像素版本 缓存，像素未变则不重算） */
   function refreshBBox(force) {
     const l = activeLayer();
     if (!l) { bboxCache = null; return null; }
-    if (!force && bboxCache && bboxCache.layerId === l.id) return bboxCache.box;
+    const pxv = l._pxv || 0;
+    if (!force && bboxCache && bboxCache.layerId === l.id && bboxCache.pxv === pxv) {
+      return bboxCache.box;
+    }
     const box = getContentBBox(l);
-    bboxCache = { layerId: l.id, box };
+    bboxCache = { layerId: l.id, pxv, box };
     return box;
   }
 
@@ -742,8 +779,7 @@
     if (T.pan) {
       T.pan = null;
       T.drawing = false;
-      PL.compositor.stage().style.cursor = PL.state.spacePan ? 'grab'
-        : ({ move: 'move', text: 'text', scale: 'default', pan: 'grab' }[PL.state.tool] || 'crosshair');
+      PL.compositor.stage().style.cursor = PL.state.spacePan ? 'grab' : PL.cursorFor(PL.state.tool);
       return;
     }
     if (T.stroke) {

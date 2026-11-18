@@ -10,11 +10,13 @@
 (function () {
   'use strict';
 
-  const LIMIT = 20;
+  const LIMIT = 20;                        // 历史条数上限
+  const MAX_POOL_BYTES = 128 * 1024 * 1024; // 像素克隆池内存上限（128MB）
 
-  // 像素克隆池：key = "{layerId}@{pxv}" → { canvas, refs }
+  // 像素克隆池：key = "{layerId}@{pxv}" → { canvas, refs, bytes }
   // 池中的 canvas 一经写入永不修改，只会被 drawImage 拷贝走，因此可被多份快照安全共享。
   const pool = new Map();
+  let poolBytes = 0;
 
   function keyOf(layer) { return layer.id + '@' + (layer._pxv || 0); }
 
@@ -22,7 +24,8 @@
     const c = document.createElement('canvas');
     c.width = src.width;
     c.height = src.height;
-    c.getContext('2d').drawImage(src, 0, 0);
+    // 软件后端：克隆留在 CPU 内存，避免每次提交都做一次 GPU 上传
+    c.getContext('2d', { willReadFrequently: true }).drawImage(src, 0, 0);
     return c;
   }
 
@@ -31,7 +34,10 @@
     keys.forEach(key => {
       const e = pool.get(key);
       if (e) { e.refs++; return; }
-      pool.set(key, { canvas: cloneCanvas(getSource(key)), refs: 1 });
+      const canvas = cloneCanvas(getSource(key));
+      const bytes = canvas.width * canvas.height * 4;
+      pool.set(key, { canvas, refs: 1, bytes });
+      poolBytes += bytes;
     });
   }
 
@@ -41,8 +47,21 @@
     snap.uses.forEach(key => {
       const e = pool.get(key);
       if (!e) return;
-      if (--e.refs <= 0) pool.delete(key);
+      if (--e.refs <= 0) {
+        poolBytes -= e.bytes;
+        pool.delete(key);
+      }
     });
+  }
+
+  /** 超出内存上限时逐出最旧的历史条目，直到池内存回落 */
+  function trimPool() {
+    while (poolBytes > MAX_POOL_BYTES) {
+      const oldest = PL.history.entries.shift();
+      if (!oldest) { pool.clear(); poolBytes = 0; break; }
+      release(oldest);
+      PL.history.index = Math.max(0, PL.history.index - 1);
+    }
   }
 
   PL.history = {
@@ -52,10 +71,12 @@
     canUndo() { return this.index > 0; },
     canRedo() { return this.index < this.entries.length - 1; },
 
+    /** 池内存占用（字节），供诊断使用 */
+    get poolBytes() { return poolBytes; },
+
     /** 采集当前文档的完整快照（像素按 id@pxv 引用共享克隆池） */
     snapshot(label) {
-      const s = PL.state;
-      const layers = s.stack.layers.map(l => {
+      const s = PL.state;      const layers = s.stack.layers.map(l => {
         const key = keyOf(l);
         return {
           id: l.id,
@@ -72,7 +93,7 @@
           curves: l.curves ? JSON.parse(JSON.stringify(l.curves)) : null, // 曲线定义
         };
       });
-      return { label, activeId: s.activeId, layers, uses: layers.map(m => m.key) };
+      return { label, activeId: s.activeId, layerSeq: s.layerSeq, layers, uses: layers.map(m => m.key) };
     },
 
     /** 提交一次操作（在操作完成后调用） */
@@ -91,6 +112,7 @@
       this.entries.push(snap);
       if (this.entries.length > LIMIT) release(this.entries.shift());
       this.index = this.entries.length - 1;
+      trimPool();   // 像素池超内存上限时逐出最旧条目
       PL.state.pristine = false;
       if (PL.updateHistoryButtons) PL.updateHistoryButtons();
     },
@@ -108,7 +130,8 @@
       });
       this.entries = [snap];
       this.index = 0;
-      PL.state.pristine = true;
+      // 注意：这里不设置 pristine —— 该标志由调用方（新建文档 / 导入图片）按语义维护，
+      // 否则导入完成后会被误置为「未编辑」，导致下次导入整份文档被清空。
       if (PL.updateHistoryButtons) PL.updateHistoryButtons();
     },
 
@@ -145,6 +168,7 @@
         PL.Layer._seq = Math.max(PL.Layer._seq, m.id);
       });
       s.activeId = s.stack.getById(entry.activeId) ? entry.activeId : (s.stack.top && s.stack.top.id);
+      if (entry.layerSeq != null) s.layerSeq = entry.layerSeq; // 还原命名计数，避免撤销后新建图层重名
       if (PL.refreshAll) PL.refreshAll();
     },
   };

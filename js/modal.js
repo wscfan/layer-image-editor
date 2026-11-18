@@ -105,10 +105,11 @@
     /** 当前是否有弹框打开 */
     isOpen() { return openCount > 0; },
 
-    /** 关闭当前弹框（视为取消） */
+    /** 关闭当前弹框（视为取消）——关闭最上层的一个 */
     cancel() {
-      const cur = document.querySelector('.modal');
-      if (cur) cur.dispatchEvent(new CustomEvent('modal:cancel'));
+      const overlays = document.querySelectorAll('.modal');
+      if (!overlays.length) return;
+      overlays[overlays.length - 1].dispatchEvent(new CustomEvent('modal:cancel'));
     },
 
     open(options) {
@@ -119,7 +120,6 @@
 
       return new Promise((resolve) => {
         const overlay = el('div', 'modal');
-        overlay.id = 'modal';
         const card = el('div', 'modal-card' + (wide ? ' wide' : ''));
 
         card.appendChild(el('h3', null, title));
@@ -142,11 +142,14 @@
         openCount++;
 
         // 读取当前表单值
+        // 注意：在本弹框内部按 id 查询，避免多弹框时 document 级查询串值。
+        // 用属性选择器而非 CSS.escape —— 后者在部分环境（如 jsdom）不可用。
+        const fieldOf = (id) => overlay.querySelector('[id="' + id + '"]');
         const readValues = () => {
           const values = {};
           fields.forEach(f => {
             if (!f.id || f.type === 'static' || f.type === 'section') return;
-            const input = document.getElementById(f.id);
+            const input = fieldOf(f.id);
             if (!input) return;
             values[f.id] = f.type === 'checkbox' ? input.checked : input.value;
           });
@@ -176,11 +179,12 @@
         });
 
         if (onOpen) {
+          const field = (id) => fieldOf(id);
           onOpen(card, {
             values: readValues,
-            field: (id) => document.getElementById(id),
+            field,
             rowOf: (id) => {
-              const inp = document.getElementById(id);
+              const inp = field(id);
               return inp ? inp.closest('.form-row') : null;
             },
           });

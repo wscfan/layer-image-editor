@@ -25,9 +25,15 @@
       if (!src) return;
       const l = new PL.Layer(src.name + ' 副本', src.width, src.height);
       l.ctx.drawImage(src.canvas, 0, 0);
+      l.markDirty();
       l.visible = src.visible;
       l.opacity = src.opacity;
       l.blendMode = src.blendMode;
+      if (src.curves) l.curves = JSON.parse(JSON.stringify(src.curves)); // 一并复制曲线
+      if (src.text) { // 文字层复制后仍是可编辑的文字层
+        l.text = { ...src.text };
+        l._textBox = src._textBox ? { ...src._textBox } : null;
+      }
       S.stack.add(l, src.id); // 插到原图层之上
       S.activeId = l.id;
       PL.history.commit('复制图层');
@@ -88,6 +94,7 @@
     S.activeId = l.id;
     S.previewFilter = '';
     S.previewLayerId = null;
+    S.pristine = true;   // 新建文档属于「未编辑」状态：首张导入的图片可自适应画布尺寸
     PL.compositor.resizeCanvas();
     PL.compositor.fit();
     PL.history.reset(label || '新建文档');
@@ -104,6 +111,7 @@
     const s = scaleContent ? Math.min(width / old.width, height / old.height) : 1;
     const dx = (width - old.width * s) / 2;
     const dy = (height - old.height * s) / 2;
+    const activeIdx = S.stack.indexOfId(S.activeId); // 记录当前层在栈中的位置（重建后 id 会变）
 
     const stack = new PL.LayerStack();
     S.stack.layers.forEach(l => {
@@ -112,21 +120,26 @@
       nl.opacity = l.opacity;
       nl.blendMode = l.blendMode;
       nl.ctx.drawImage(l.canvas, dx, dy, old.width * s, old.height * s);
+      nl.markDirty();
       if (l.text) {
         nl.text = { ...l.text, x: l.text.x * s + dx, y: l.text.y * s + dy, fontSize: l.text.fontSize * s };
         nl._textBox = null;
       }
+      if (l.curves) nl.curves = JSON.parse(JSON.stringify(l.curves)); // 保留曲线设置
       stack.layers.push(nl);
     });
     // 背景色：作为最底层新建一个背景层
     if (bg && bg !== 'keep') {
       const bgLayer = new PL.Layer('背景', width, height, bg === 'transparent' ? {} : { fill: bg });
+      bgLayer.markDirty();
       stack.layers.unshift(bgLayer);
     }
     S.doc.width = width;
     S.doc.height = height;
     S.stack = stack;
-    if (!stack.getById(S.activeId)) S.activeId = stack.top ? stack.top.id : null;
+    // 保持选中原来的那一层（按位置对应，而非按 id —— 重建后 id 已改变）
+    const kept = activeIdx >= 0 ? stack.layers[activeIdx + (bg && bg !== 'keep' ? 1 : 0)] : null;
+    S.activeId = kept ? kept.id : (stack.top ? stack.top.id : null);
     PL.compositor.resizeCanvas();
     PL.compositor.fit();
     PL.history.commit('调整文档尺寸');
@@ -175,9 +188,11 @@
       S.stack.add(l);
       S.activeId = l.id;
     });
-    S.pristine = false;
     PL.compositor.fit();
     PL.history.reset('导入图片');
+    // 导入后文档已「编辑过」：必须在 history.reset 之后设置，
+    // 否则下一次导入会误判为首次导入而重建文档、清空已有图层。
+    S.pristine = false;
     PL.refreshAll();
   }
 
@@ -203,8 +218,7 @@
       o.classList.toggle('hidden', !show);
     });
     const stage = PL.compositor.stage();
-    stage.style.cursor = PL.state.spacePan ? 'grab'
-      : ({ move: 'move', text: 'text', scale: 'default', pan: 'grab' }[tool] || 'crosshair');
+    stage.style.cursor = PL.state.spacePan ? 'grab' : PL.cursorFor(tool);
     PL.compositor.clearOverlay();
     if (PL.tools.activate) PL.tools.activate(tool);
   }
@@ -247,10 +261,10 @@
   function initKeyboard() {
     window.addEventListener('keydown', (e) => {
       // 弹框打开时只处理 Esc，避免误触发工具快捷键
-      const adjCurOpen = window.__adjCurOpen ? window.__adjCurOpen() : false;
+      const adjCurOpen = PL.adjCur ? PL.adjCur.isOpen() : false;
       if (adjCurOpen || (PL.modal && PL.modal.isOpen())) {
         if (e.key === 'Escape') {
-          if (adjCurOpen) { if (window.__adjCurClose) window.__adjCurClose(); }
+          if (adjCurOpen) PL.adjCur.close();
           else if (PL.modal) PL.modal.cancel();
         }
         return;
@@ -297,8 +311,7 @@
     });
 
     // 空格 + 拖动 = 临时平移画布（任意工具下）
-    const toolCursor = () =>
-      ({ move: 'move', text: 'text', scale: 'default', pan: 'grab' }[S.tool]) || 'crosshair';
+    const toolCursor = () => PL.cursorFor(S.tool);
     const setSpacePan = (on) => {
       S.spacePan = on;
       if (!PL.tools.drawing) PL.compositor.stage().style.cursor = on ? 'grab' : toolCursor();
@@ -306,7 +319,7 @@
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'Space' && e.key !== ' ') return;
       if (isTyping(e)) return;
-      if ((PL.modal && PL.modal.isOpen()) || (window.__adjCurOpen && window.__adjCurOpen())) return;
+      if ((PL.modal && PL.modal.isOpen()) || (PL.adjCur && PL.adjCur.isOpen())) return;
       if (PL.tools.drawing) return; // 正在绘制 / 变换时不平移
       if (!S.spacePan) setSpacePan(true);
       e.preventDefault(); // 阻止空格滚动页面 / 触发聚焦的按钮
@@ -351,13 +364,18 @@
       tabCurve.classList.toggle('active', !isAdj);
       adjustSection.classList.toggle('hidden', !isAdj);
       curveSection.classList.toggle('hidden', isAdj);
+      // 直方图只在曲线页签可见时统计，避免每次提交都读回整幅像素
+      if (PL.curves && PL.curves.setVisible) PL.curves.setVisible(!isAdj && !modal.classList.contains('hidden'));
     };
     const open = (tab) => {
       modal.classList.remove('hidden');
       setTab(tab);
       if (tab === 'curve') PL.curves.refresh(); // 曲线画布需可见后再绘（尺寸取 clientWidth）
     };
-    const close = () => modal.classList.add('hidden');
+    const close = () => {
+      modal.classList.add('hidden');
+      if (PL.curves && PL.curves.setVisible) PL.curves.setVisible(false);
+    };
 
     document.getElementById('btnOpenAdjust').addEventListener('click', () => open('adjust'));
     document.getElementById('btnOpenCurve').addEventListener('click', () => open('curve'));
@@ -369,9 +387,12 @@
       e.stopPropagation(); // 弹框内按键不回传给全局快捷键
       if (e.key === 'Escape') close();
     });
-    // 供全局快捷键判断当前弹框是否打开
-    window.__adjCurOpen = () => !modal.classList.contains('hidden');
-    window.__adjCurClose = close;
+    // 对外暴露统一接口（避免在 window 上散落全局函数）
+    PL.adjCur = {
+      isOpen: () => !modal.classList.contains('hidden'),
+      open,
+      close,
+    };
   }
 
   function initOptions() {

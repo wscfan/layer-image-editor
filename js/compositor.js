@@ -6,6 +6,15 @@
 
   const els = {};
 
+  /* 画布屏幕矩形缓存：pointermove 中读取 getBoundingClientRect 会强制重排，
+     矩形只在画布尺寸 / 缩放 / 平移变化后失效。 */
+  let rectCache = null;
+  function stageRect() {
+    if (!rectCache && els.stage) rectCache = els.stage.getBoundingClientRect();
+    return rectCache;
+  }
+  function invalidateRect() { rectCache = null; }
+
   PL.compositor = {
     init() {
       els.stage = document.getElementById('stage');
@@ -23,6 +32,7 @@
       els.stage.height = d.height;
       els.overlay.width = d.width;
       els.overlay.height = d.height;
+      invalidateRect();
     },
 
     setZoom(z) {
@@ -39,6 +49,7 @@
       els.stage.style.height = (d.height * z) + 'px';
       els.overlay.style.width = els.stage.style.width;
       els.overlay.style.height = els.stage.style.height;
+      invalidateRect();
       this.applyPan();
       if (PL.updateStatus) PL.updateStatus();
       if (PL.tools && PL.tools.onZoomChanged) PL.tools.onZoomChanged();
@@ -50,6 +61,7 @@
       const p = PL.state.pan;
       els.stagewrap.style.transform =
         `translate(-50%, -50%) translate(${p.x}px, ${p.y}px)`;
+      invalidateRect();
     },
 
     /** 把缩放设为绝对值 z1，并保持屏幕坐标 (clientX, clientY) 下的画面点不动 */
@@ -116,8 +128,9 @@
         if (!l.visible) continue;
         ctx.globalAlpha = l.opacity;
         ctx.globalCompositeOperation = l.blendMode;
-        // 调整面板的实时预览：只作用于当前图层
-        if (s.previewFilter && l.id === s.previewLayerId) ctx.filter = s.previewFilter;
+        // 调整面板的实时预览：只作用于当前图层。
+        // ctx.filter 是持久状态，必须逐层显式赋值，否则会「漏」到上方的图层。
+        ctx.filter = (s.previewFilter && l.id === s.previewLayerId) ? s.previewFilter : 'none';
         // 曲线：图层带曲线时用经过 LUT 的画布
         const src = (PL.curves && PL.curves.hasCurves(l))
           ? PL.curves.previewCanvas(l)
@@ -135,7 +148,9 @@
 
     /** 屏幕事件坐标 → 文档坐标（与缩放无关，按比例换算） */
     toDoc(e) {
-      const r = els.stage.getBoundingClientRect();
+      // 矩形缓存：高频 pointermove 中读取 getBoundingClientRect 会强制重排，
+      // 仅在画布尺寸/缩放/平移变化后失效。
+      const r = stageRect() || els.stage.getBoundingClientRect();
       const d = PL.state.doc;
       return {
         x: (e.clientX - r.left) / r.width * d.width,

@@ -58,12 +58,16 @@
     /** 像素被直接修改后调用，使历史记录能识别「这一层变了」 */
     markDirty() { this._pxv = (this._pxv || 0) + 1; }
 
-    /** 像素深拷贝（撤销快照 / 移动基线 / 笔画基线） */
+    /**
+     * 像素深拷贝（撤销快照 / 移动基线 / 笔画基线）。
+     * 目标画布使用 willReadFrequently（软件后端）：拷贝留在 CPU 内存，
+     * 避免「软件画布 → GPU 画布」的上传开销（实测历史提交耗时下降明显）。
+     */
     clonePixels() {
       const c = document.createElement('canvas');
       c.width = this.width;
       c.height = this.height;
-      c.getContext('2d').drawImage(this.canvas, 0, 0);
+      c.getContext('2d', { willReadFrequently: true }).drawImage(this.canvas, 0, 0);
       return c;
     }
 
@@ -121,6 +125,12 @@
 
   PL.Layer = Layer;
   PL.LayerStack = LayerStack;
+
+  /** 各工具在画布上的光标（统一维护，避免多处重复定义） */
+  const TOOL_CURSOR = {
+    move: 'move', text: 'text', scale: 'default', pan: 'grab',
+  };
+  PL.cursorFor = (tool) => TOOL_CURSOR[tool] || 'crosshair';
 
   /**
    * 像素将被直接修改（画笔/填充/形状/滤镜/缩放等）时，
