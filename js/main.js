@@ -222,6 +222,7 @@
     PL.compositor.clearOverlay();
     if (PL.tools.activate) PL.tools.activate(tool);
   }
+  PL.setTool = setTool; // 供其他模块调用（如双击文字自动切到文字工具）
 
   /* ================= 状态刷新 ================= */
 
@@ -418,6 +419,14 @@
     [['xf50', 0.5], ['xf75', 0.75], ['xf125', 1.25], ['xf200', 2]].forEach(([id, f]) =>
       document.getElementById(id).addEventListener('click', () => PL.tools.scaleContent(f)));
     document.getElementById('xfFit').addEventListener('click', () => PL.tools.fitContent());
+
+    // 文字编辑中：改字号/颜色/不透明度实时同步到画布编辑框
+    ['fontSize', 'brushColor', 'toolOpacity'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', () => {
+        if (PL.tools && PL.tools.onTextStyleChanged) PL.tools.onTextStyleChanged();
+      });
+    });
   }
 
   function initZoom() {

@@ -166,10 +166,11 @@ label { color: #9a9ca3; }
 #adjustpanel { flex: 0 0 auto; }
 #adjustpanel .row { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
 #adjustpanel label { width: 52px; flex: none; }
+#adjustpanel .row input[type="range"] { flex: 1 1 auto; width: auto; min-width: 0; }
 #adjustpanel .row .val { color: #8b8d94; min-width: 44px; text-align: right; }
 #adjustpanel .btnrow { display: flex; gap: 8px; margin-top: 10px; }
 #adjustpanel .btnrow.wrap { flex-wrap: wrap; }
-#adjustpanel .btnrow.wrap button { flex: 1; min-width: 0; }
+#adjustpanel .btnrow.wrap button { flex: 1 1 auto; min-width: 0; }
 #adjustpanel .tip { color: #77797f; font-size: 12px; margin-top: 8px; line-height: 1.5; }
 #adjustpanel h3 { font-size: 12px; color: #8b8d94; margin: 12px 0 6px; font-weight: 600; }
 
@@ -274,7 +275,27 @@ label { color: #9a9ca3; }
 }
 .adjmodal-close:hover { color: #fff; background: #2e3036; }
 .adjmodal-body {
-  padding: 16px; overflow-y: auto; flex: 1;
+  padding: 16px; overflow-y: auto; overflow-x: hidden; flex: 1;
   display: flex; flex-direction: column;
 }
 .adjmodal-body section { flex: 0 0 auto; }
+
+/* ================= 图层右键菜单 ================= */
+.ctxmenu {
+  position: fixed; z-index: 300;
+  min-width: 168px; padding: 4px;
+  background: #26272d; border: 1px solid #3c3e46; border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  display: flex; flex-direction: column;
+}
+.ctxmenu .item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 6px; cursor: pointer;
+  color: #d8d9de; background: none; border: none; text-align: left;
+  font: inherit; font-size: 13px; white-space: nowrap; width: 100%;
+}
+.ctxmenu .item:hover:not(.disabled):not(:disabled) { background: #2f6fed; color: #fff; }
+.ctxmenu .item.danger { color: #ff7b72; }
+.ctxmenu .item.danger:hover:not(.disabled):not(:disabled) { background: #b23b34; color: #fff; }
+.ctxmenu .item.disabled, .ctxmenu .item:disabled { opacity: .4; cursor: not-allowed; }
+.ctxmenu .sep { height: 1px; background: #33353c; margin: 4px 6px; }

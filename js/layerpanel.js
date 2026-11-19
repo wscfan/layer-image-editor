@@ -8,6 +8,7 @@
   'use strict';
 
   let listEl;
+  let ctxMenu = null;
 
   function drawThumb(thumb, layer) {
     const c = thumb.getContext('2d');
@@ -45,6 +46,103 @@
       if (e.key === 'Enter') input.blur();
       if (e.key === 'Escape') { input.value = layer.name; input.blur(); }
     });
+  }
+
+  /* ================= 右键菜单 ================= */
+
+  function sep() {
+    const d = document.createElement('div');
+    d.className = 'sep';
+    return d;
+  }
+
+  function menuItem(label, opts) {
+    opts = opts || {};
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'item' + (opts.danger ? ' danger' : '') + (opts.disabled ? ' disabled' : '');
+    b.textContent = label;
+    if (opts.disabled) {
+      b.disabled = true;
+    } else {
+      b.addEventListener('click', () => { closeContextMenu(); if (opts.onClick) opts.onClick(); });
+    }
+    return b;
+  }
+
+  function onDocPointerDown(e) {
+    if (ctxMenu && ctxMenu.contains(e.target)) return;
+    closeContextMenu();
+  }
+  function onDocKeyDown(e) { if (e.key === 'Escape') closeContextMenu(); }
+
+  function closeContextMenu() {
+    if (!ctxMenu) return;
+    ctxMenu.remove();
+    ctxMenu = null;
+    document.removeEventListener('pointerdown', onDocPointerDown, true);
+    document.removeEventListener('keydown', onDocKeyDown, true);
+    document.removeEventListener('scroll', closeContextMenu, true);
+    window.removeEventListener('resize', closeContextMenu);
+    window.removeEventListener('blur', closeContextMenu);
+  }
+
+  function openContextMenu(layer, x, y) {
+    closeContextMenu();
+    const s = PL.state;
+    if (!s.stack || !s.stack.getById(layer.id)) return;
+    const idx = s.stack.indexOfId(layer.id);
+    const isBottom = idx <= 0;
+    const isTop = idx === s.stack.length - 1;
+
+    // 右键即选中该图层
+    s.activeId = layer.id;
+    PL.layerpanel.render();
+
+    const menu = document.createElement('div');
+    menu.className = 'ctxmenu';
+
+    menu.appendChild(menuItem('重命名', {
+      onClick: () => {
+        const row = listEl && listEl.querySelector('.lrow[data-id="' + layer.id + '"]');
+        const nameEl = row && row.querySelector('.lname');
+        if (row && nameEl) startRename(row, nameEl, layer);
+      },
+    }));
+    menu.appendChild(menuItem(layer.visible ? '隐藏图层' : '显示图层', {
+      onClick: () => {
+        layer.visible = !layer.visible;
+        PL.history.commit(layer.visible ? '显示图层' : '隐藏图层');
+        PL.refreshAll();
+      },
+    }));
+    menu.appendChild(sep());
+    menu.appendChild(menuItem('复制图层', { onClick: () => PL.actions.duplicateLayer() }));
+    menu.appendChild(menuItem('上移一层', { disabled: isTop, onClick: () => PL.actions.moveLayer(1) }));
+    menu.appendChild(menuItem('下移一层', { disabled: isBottom, onClick: () => PL.actions.moveLayer(-1) }));
+    menu.appendChild(menuItem('向下合并', { disabled: isBottom, onClick: () => PL.actions.mergeDown() }));
+    menu.appendChild(sep());
+    menu.appendChild(menuItem('图层属性…', { onClick: () => PL.dialogs.openLayerProps() }));
+    menu.appendChild(menuItem('删除图层', { danger: true, onClick: () => PL.actions.deleteLayer() }));
+
+    document.body.appendChild(menu);
+    ctxMenu = menu;
+
+    // 定位并防止越界
+    const r = menu.getBoundingClientRect();
+    let left = x, top = y;
+    if (left + r.width > window.innerWidth - 6) left = window.innerWidth - r.width - 6;
+    if (top + r.height > window.innerHeight - 6) top = window.innerHeight - r.height - 6;
+    if (left < 6) left = 6;
+    if (top < 6) top = 6;
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    document.addEventListener('keydown', onDocKeyDown, true);
+    document.addEventListener('scroll', closeContextMenu, true);
+    window.addEventListener('resize', closeContextMenu);
+    window.addEventListener('blur', closeContextMenu);
   }
 
   function buildRow(layer) {
@@ -87,6 +185,13 @@
       if (e.target === eye || row.querySelector('input.rename')) return;
       PL.state.activeId = layer.id;
       PL.layerpanel.render();
+    });
+
+    // 右键菜单
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (row.querySelector('input.rename')) return;
+      openContextMenu(layer, e.clientX, e.clientY);
     });
 
     // 拖拽排序：拖到某行上 = 移动到该行的位置

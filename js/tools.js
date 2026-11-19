@@ -581,8 +581,14 @@
     const o = PL.state.toolOptions;
     const fs = document.getElementById('fontSize');
     const color = document.getElementById('brushColor');
+    const op = document.getElementById('toolOpacity');
+    const opVal = document.getElementById('toolOpacityVal');
     if (fs) fs.value = o.fontSize;
     if (color) color.value = o.color;
+    if (op) {
+      op.value = Math.round((o.opacity != null ? o.opacity : 1) * 100);
+      if (opVal) opVal.textContent = op.value + '%';
+    }
   }
 
   /** 从合成结果取色 */
@@ -671,13 +677,13 @@
       const box = refreshBBox(true); // 按下时取最新包围盒
       if (!box) return;              // 空图层没有可变换的内容
       const handle = hitHandle(p, box);
-      if (handle) PL.bakeIfText(layer); // 拖角缩放会固化文字图层；拖内容移动则保持可编辑
       T.xform = {
         layer,
         base: layer.clonePixels(),
         startBox: box,
         handle, // null = 拖内容移动
         start: p,
+        textBase: layer.text ? { ...layer.text } : null, // 文字图层缩放改字号+位置，保持可编辑
       };
       T.drawing = true;
       e.target.setPointerCapture(e.pointerId);
@@ -763,6 +769,23 @@
             Math.max(1e-6, Math.hypot(c0.x - a.x, c0.y - a.y));
           fx = fy = Math.max(f, 1 / Math.max(xf.startBox.w, xf.startBox.h)); // 最小缩到 1px
         }
+        // 文字图层等比缩放：改字号 + 位置，保持可再编辑（自由拉伸无法用文字表达，先固化像素）
+        if (xf.textBase && !e.shiftKey) {
+          const tb = xf.textBase, f = fx;
+          xf.layer.text = {
+            ...tb,
+            fontSize: Math.max(1, tb.fontSize * f),
+            x: a.x + (tb.x - a.x) * f,
+            y: a.y + (tb.y - a.y) * f,
+          };
+          renderTextLayer(xf.layer);
+          const nb = { w: xf.startBox.w * f, h: xf.startBox.h * f };
+          nb.x = a.x === xf.startBox.x ? a.x : a.x - nb.w;
+          nb.y = a.y === xf.startBox.y ? a.y : a.y - nb.h;
+          drawXformUI(nb);
+          return;
+        }
+        if (xf.textBase) { PL.bakeIfText(xf.layer); xf.textBase = null; }
         applyScaleAbout(xf.layer, xf.base, fx, fy, a.x, a.y);
         // 变换后的框（用于 UI 显示）
         const nb = { w: xf.startBox.w * fx, h: xf.startBox.h * fy };
@@ -799,16 +822,18 @@
       PL.refreshAll(); // onDocChanged 会刷新包围盒与变换框
     } else if (T.moveOp) {
       const { layer, d } = T.moveOp;
-      // 移动文字图层：同步文字坐标，保持可再次编辑
-      if (layer.text && d) {
-        layer.text.x += d.dx;
-        layer.text.y += d.dy;
-        layer._textBox = measureTextBox(layer.text);
-      }
       T.moveOp = null;
       T.drawing = false;
-      PL.history.commit('移动图层');
-      PL.refreshAll();
+      if (d && (d.dx || d.dy)) {
+        // 移动文字图层：同步文字坐标，保持可再次编辑
+        if (layer.text) {
+          layer.text.x += d.dx;
+          layer.text.y += d.dy;
+          layer._textBox = measureTextBox(layer.text);
+        }
+        PL.history.commit('移动图层');
+        PL.refreshAll();
+      }
     }
   }
 
@@ -835,6 +860,16 @@
       }
     },
 
+    /** 编辑文字时，选项栏改字号/颜色/不透明度 → 实时同步到编辑框（提交时写入图层） */
+    onTextStyleChanged() {
+      const te = T.textEdit;
+      if (!te) return;
+      const o = PL.state.toolOptions;
+      te.data = { ...te.data, fontSize: o.fontSize, color: o.color, opacity: o.opacity };
+      applyTextStyle(te.el, te.data);
+      sizeTextEditor();
+    },
+
     /** 切换工具前提交进行中的文字编辑 */
     commitTextIfEditing() {
       if (T.textEdit) closeTextEditor(false);
@@ -846,8 +881,16 @@
       if (!l) return;
       const box = refreshBBox(true);
       if (!box) return;
-      PL.bakeIfText(l);
-      applyScaleAbout(l, l.clonePixels(), f, f, box.x + box.w / 2, box.y + box.h / 2);
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      if (l.text) { // 文字图层：缩放字号与位置，保持可编辑
+        const tb = l.text;
+        l.text = { ...tb, fontSize: Math.max(1, tb.fontSize * f),
+          x: cx + (tb.x - cx) * f, y: cy + (tb.y - cy) * f };
+        renderTextLayer(l);
+      } else {
+        PL.bakeIfText(l);
+        applyScaleAbout(l, l.clonePixels(), f, f, cx, cy);
+      }
       PL.history.commit('缩放 ' + Math.round(f * 100) + '%');
       PL.refreshAll();
     },
@@ -858,11 +901,18 @@
       if (!l) return;
       const box = refreshBBox(true);
       if (!box) return;
-      PL.bakeIfText(l);
       const d = PL.state.doc;
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
       const f = Math.min(d.width / box.w, d.height / box.h);
-      applyScaleAbout(l, l.clonePixels(), f, f, cx, cy, d.width / 2 - cx, d.height / 2 - cy);
+      if (l.text) { // 文字图层：缩放字号与位置，保持可编辑
+        const tb = l.text;
+        l.text = { ...tb, fontSize: Math.max(1, tb.fontSize * f),
+          x: d.width / 2 + (tb.x - cx) * f, y: d.height / 2 + (tb.y - cy) * f };
+        renderTextLayer(l);
+      } else {
+        PL.bakeIfText(l);
+        applyScaleAbout(l, l.clonePixels(), f, f, cx, cy, d.width / 2 - cx, d.height / 2 - cy);
+      }
       PL.history.commit('内容适应画布');
       PL.refreshAll();
     },
@@ -876,6 +926,16 @@
       stage.addEventListener('pointerleave', () => {
         if (!T.drawing) PL.compositor.clearOverlay();
         if (PL.updatePos) PL.updatePos(null);
+      });
+      // 双击文字图层：任意工具下直接进入文字编辑
+      stage.addEventListener('dblclick', (e) => {
+        if (PL.state.spacePan) return;
+        const p = PL.compositor.toDoc(e);
+        const hit = hitTextLayer(p);
+        if (!hit) return;
+        if (PL.setTool) PL.setTool('text');
+        selectLayerById(hit.id);
+        openTextEditor(hit, p);
       });
     },
   };
