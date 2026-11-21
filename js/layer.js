@@ -29,6 +29,7 @@
     },
     previewFilter: '',   // 调整面板的实时预览滤镜（仅当前图层）
     previewLayerId: null,
+    maskEditId: null,    // 蒙版编辑目标（图层 id；null = 编辑图层像素）
     pan: { x: 0, y: 0 }, // 画布平移偏移（屏幕像素，相对居中位置）
     spacePan: false,     // 是否按住空格进入临时平移模式
     pristine: true,      // 文档是否未被编辑（首次导入图片时自适应画布尺寸）
@@ -57,6 +58,35 @@
 
     /** 像素被直接修改后调用，使历史记录能识别「这一层变了」 */
     markDirty() { this._pxv = (this._pxv || 0) + 1; }
+
+    /**
+     * 创建图层蒙版：不透明灰度画布（白=显示，黑=隐藏，灰=半透明）。
+     * 蒙版在合成时应用，不破坏图层像素。
+     */
+    initMask(fill = '#ffffff') {
+      this.mask = document.createElement('canvas');
+      this.mask.width = this.width;
+      this.mask.height = this.height;
+      this.maskCtx = this.mask.getContext('2d', { willReadFrequently: true });
+      this.maskCtx.fillStyle = fill;
+      this.maskCtx.fillRect(0, 0, this.width, this.height);
+      this.maskEnabled = true;
+      this.markMaskDirty();
+      return this.mask;
+    }
+
+    /** 蒙版像素被修改后调用（使预览缓存与历史快照失效） */
+    markMaskDirty() { this._maskVersion = (this._maskVersion || 0) + 1; }
+
+    /** 蒙版像素深拷贝（笔画基线 / 变换基线） */
+    cloneMask() {
+      if (!this.mask) return null;
+      const c = document.createElement('canvas');
+      c.width = this.width;
+      c.height = this.height;
+      c.getContext('2d', { willReadFrequently: true }).drawImage(this.mask, 0, 0);
+      return c;
+    }
 
     /**
      * 像素深拷贝（撤销快照 / 移动基线 / 笔画基线）。

@@ -155,6 +155,7 @@
       const s = PL.state;
       const l = s.stack ? s.stack.getById(s.activeId) : null;
       if (!l) return;
+      const hasMask = !!l.mask;
       const values = await PL.modal.open({
         title: '图层属性',
         fields: [
@@ -162,6 +163,7 @@
           { type: 'checkbox', id: 'lpVisible', label: '可见', value: l.visible, text: '显示该图层' },
           { type: 'range', id: 'lpOpacity', label: '不透明度', value: Math.round(l.opacity * 100), min: 0, max: 100, unit: '%' },
           { type: 'select', id: 'lpBlend', label: '混合模式', value: l.blendMode, options: BLEND_OPTIONS },
+          { type: 'checkbox', id: 'lpMask', label: '蒙版', value: hasMask ? l.maskEnabled !== false : false, text: hasMask ? '启用图层蒙版' : '（该图层没有蒙版）', ...(hasMask ? {} : { disabled: true }) },
         ],
         submitText: '应用',
       });
@@ -171,6 +173,13 @@
       l.visible = !!values.lpVisible;
       l.opacity = clamp(+values.lpOpacity / 100, 0, 1);
       l.blendMode = values.lpBlend;
+      if (hasMask) {
+        const en = !!values.lpMask;
+        if (en !== (l.maskEnabled !== false)) {
+          l.maskEnabled = en;
+          l.markMaskDirty();
+        }
+      }
       PL.history.commit('图层属性');
       PL.refreshAll();
     },

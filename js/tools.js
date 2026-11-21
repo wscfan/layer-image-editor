@@ -54,6 +54,26 @@
 
   function teLayerId(te) { return te.layer ? te.layer.id : null; }
 
+  /** 颜色 → 等亮度的灰度（蒙版只认灰度：白=显示，黑=隐藏） */
+  function grayHex(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    const v = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    const h = v.toString(16).padStart(2, '0');
+    return '#' + h + h + h;
+  }
+
+  /**
+   * 当前绘制目标：处于蒙版编辑态（state.maskEditId === 图层 id 且图层有蒙版）时
+   * 画笔/橡皮/油漆桶/形状 画进蒙版，否则画进图层像素。
+   */
+  function paintTarget(layer) {
+    const s = PL.state;
+    if (layer && layer.mask && s.maskEditId === layer.id) {
+      return { ctx: layer.maskCtx, isMask: true };
+    }
+    return { ctx: layer.ctx, isMask: false };
+  }
+
   /* ================= 画笔 / 橡皮 ================= */
 
   /**
@@ -112,20 +132,31 @@
   }
 
   function beginStroke(layer, p) {
-    PL.bakeIfText(layer); // 画笔/橡皮直接改像素，文字图层需固化
+    const tgt = paintTarget(layer);
+    if (!tgt.isMask) PL.bakeIfText(layer); // 画笔/橡皮直接改像素，文字图层需固化（蒙版目标不影响文字）
     const buf = document.createElement('canvas');
     buf.width = layer.width;
     buf.height = layer.height;
+    // 蒙版目标：颜色转灰度；橡皮在蒙版上 = 画黑（隐藏）。
+    // 蒙版始终用 source-over（保持不透明灰度画布的不变量），
+    // destination-out 会把画布擦透明，破坏蒙版语义。
+    const o = PL.state.toolOptions;
+    const color = tgt.isMask
+      ? (PL.state.tool === 'eraser' ? '#000000' : grayHex(o.color))
+      : o.color;
     T.stroke = {
       layer,
       erase: PL.state.tool === 'eraser',
-      base: layer.clonePixels(), // 笔画开始前的图层基线
+      base: tgt.isMask ? layer.cloneMask() : layer.clonePixels(), // 笔画开始前的目标基线
       buf,
       bufCtx: buf.getContext('2d'),
       last: p,
-      opacity: PL.state.toolOptions.opacity, // 笔画内不透明度固定，避免中途改动导致区域间浓淡不一
+      opacity: o.opacity, // 笔画内不透明度固定，避免中途改动导致区域间浓淡不一
+      targetCtx: tgt.ctx,
+      isMask: tgt.isMask,
+      color,
     };
-    stampLine(T.stroke.bufCtx, p, p, PL.state.toolOptions);
+    stampLine(T.stroke.bufCtx, p, p, { ...o, color });
     compositeStroke();
     T.drawing = true;
   }
@@ -133,51 +164,58 @@
   function moveStroke(p) {
     const o = PL.state.toolOptions;
     const from = T.stroke.last;
-    stampLine(T.stroke.bufCtx, from, p, o);
+    stampLine(T.stroke.bufCtx, from, p, { ...o, color: T.stroke.color });
     T.stroke.last = p;
     compositeStroke();
   }
 
   /**
-   * 基线 + 笔迹缓冲 → 图层（橡皮用 destination-out 抠除）。
+   * 基线 + 笔迹缓冲 → 绘制目标（图层像素或蒙版；橡皮用 destination-out 抠除）。
    *
    * 实测：曾改为「只重绘脏矩形」，但在 willReadFrequently 的软件渲染画布上，
    * 带源矩形的 drawImage 会走慢路径（1440 次合成 41ms → 333ms）。
    * 因此保留全画布合成（3 次整幅操作走快速内存拷贝路径，约 0.03ms/次）。
    */
   function compositeStroke() {
-    const { layer, base, buf, erase } = T.stroke;
-    const c = layer.ctx;
+    const { layer, base, buf, erase, targetCtx, isMask } = T.stroke;
+    const c = targetCtx;
     c.save();
     c.globalAlpha = 1;
     c.globalCompositeOperation = 'source-over';
     c.clearRect(0, 0, layer.width, layer.height);
     c.drawImage(base, 0, 0);
     c.globalAlpha = T.stroke.opacity;
-    c.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
+    // 蒙版目标永远 source-over（橡皮在蒙版上画黑）；图层目标橡皮才用 destination-out
+    c.globalCompositeOperation = (erase && !isMask) ? 'destination-out' : 'source-over';
     c.drawImage(buf, 0, 0);
     c.restore();
-    T.stroke.layer.markDirty();
+    if (isMask) layer.markMaskDirty();
+    else layer.markDirty();
     PL.render();
   }
 
   function endStroke() {
-    const erase = T.stroke.erase;
+    const { erase, isMask } = T.stroke;
     T.stroke = null;
     T.drawing = false;
-    PL.history.commit(erase ? '橡皮擦' : '画笔');
+    PL.history.commit((erase ? '橡皮擦' : '画笔') + (isMask ? '（蒙版）' : ''));
     PL.refreshAll();
   }
 
   /* ================= 移动图层 ================= */
 
   function beginMove(layer, p) {
-    T.moveOp = { layer, base: layer.clonePixels(), start: p };
+    T.moveOp = {
+      layer,
+      base: layer.clonePixels(),
+      maskBase: layer.mask ? layer.cloneMask() : null, // 蒙版与内容一起移动
+      start: p,
+    };
     T.drawing = true;
   }
 
   function doMove(p) {
-    const { layer, base, start } = T.moveOp;
+    const { layer, base, maskBase, start } = T.moveOp;
     const dx = Math.round(p.x - start.x);
     const dy = Math.round(p.y - start.y);
     T.moveOp.d = { dx, dy };
@@ -189,6 +227,16 @@
     c.drawImage(base, dx, dy);
     c.restore();
     layer.markDirty();
+    if (maskBase && layer.mask) {
+      const mc = layer.maskCtx;
+      mc.save();
+      mc.globalAlpha = 1;
+      mc.globalCompositeOperation = 'source-over';
+      mc.clearRect(0, 0, layer.width, layer.height);
+      mc.drawImage(maskBase, dx, dy);
+      mc.restore();
+      layer.markMaskDirty();
+    }
     PL.render();
   }
 
@@ -256,13 +304,15 @@
     T.drawing = false;
     // 尺寸检查必须放在固化之前：误点时不应把文字图层固化成不可编辑的像素层
     if (r.w < 1 || r.h < 1) return;
-    PL.bakeIfText(layer); // 形状直接改像素，文字图层需固化
+    const tgt = paintTarget(layer);
+    if (!tgt.isMask) PL.bakeIfText(layer); // 形状直接改像素，文字图层需固化
     const o = PL.state.toolOptions;
-    const c = layer.ctx;
+    const color = tgt.isMask ? grayHex(o.color) : o.color;
+    const c = tgt.ctx;
     c.save();
     c.globalAlpha = o.opacity;
-    c.fillStyle = o.color;
-    c.strokeStyle = o.color;
+    c.fillStyle = color;
+    c.strokeStyle = color;
     c.lineWidth = o.strokeWidth;
     c.beginPath();
     if (PL.state.tool === 'rect') c.rect(r.x, r.y, r.w, r.h);
@@ -270,8 +320,9 @@
     if (o.shapeMode === 'stroke') c.stroke();
     else c.fill();
     c.restore();
-    layer.markDirty();
-    PL.history.commit('绘制形状');
+    if (tgt.isMask) layer.markMaskDirty();
+    else layer.markDirty();
+    PL.history.commit('绘制形状' + (tgt.isMask ? '（蒙版）' : ''));
     PL.refreshAll();
   }
 
@@ -342,7 +393,22 @@
   }
 
   /** 把 base 像素以 (ax,ay) 为锚点缩放 fx/fy 倍（可选平移 dx,dy）画回图层 */
-  function applyScaleAbout(layer, base, fx, fy, ax, ay, dx = 0, dy = 0) {
+  /** 把同一变换应用到蒙版（与像素保持对齐） */
+  function applyMaskTransform(layer, maskBase, fx, fy, ax, ay, dx = 0, dy = 0) {
+    if (!maskBase || !layer.mask) return;
+    const mc = layer.maskCtx;
+    mc.save();
+    mc.globalAlpha = 1;
+    mc.globalCompositeOperation = 'source-over';
+    mc.clearRect(0, 0, layer.width, layer.height);
+    mc.setTransform(fx, 0, 0, fy, ax - fx * ax + dx, ay - fy * ay + dy);
+    mc.drawImage(maskBase, 0, 0);
+    mc.setTransform(1, 0, 0, 1, 0, 0);
+    mc.restore();
+    layer.markMaskDirty();
+  }
+
+  function applyScaleAbout(layer, base, fx, fy, ax, ay, dx = 0, dy = 0, maskBase = null) {
     const c = layer.ctx;
     c.save();
     c.globalAlpha = 1;
@@ -353,6 +419,7 @@
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.restore();
     layer.markDirty();
+    applyMaskTransform(layer, maskBase, fx, fy, ax, ay, dx, dy);
     PL.render();
   }
 
@@ -399,14 +466,11 @@
   /**
    * @returns {boolean} 是否实际修改了像素（未修改则不入撤销历史）
    */
-  function floodFill(layer, p) {
-    const w = layer.width, h = layer.height;
+  /** 泛洪填充（可直接作用于任意 ctx，供图层与蒙版共用） */
+  function floodFillOn(ctx, w, h, p, colorHex, tol) {
     const sx = Math.floor(p.x), sy = Math.floor(p.y);
     if (sx < 0 || sy < 0 || sx >= w || sy >= h) return false;
-    const o = PL.state.toolOptions;
-    const tol = o.tolerance;
-    const [fr, fg, fb] = hexToRgb(o.color);
-    const ctx = layer.ctx;
+    const [fr, fg, fb] = hexToRgb(colorHex);
     const img = ctx.getImageData(0, 0, w, h);
     const d = img.data;
     const si = (sy * w + sx) * 4;
@@ -429,7 +493,17 @@
       if (y < h - 1) stack.push(pi + w);
     }
     ctx.putImageData(img, 0, 0);
-    layer.markDirty();
+    return true;
+  }
+
+  function floodFill(layer, p) {
+    const o = PL.state.toolOptions;
+    const tgt = paintTarget(layer);
+    if (!tgt.isMask) PL.bakeIfText(layer);
+    const color = tgt.isMask ? grayHex(o.color) : o.color;
+    if (!floodFillOn(tgt.ctx, layer.width, layer.height, p, color, o.tolerance)) return false;
+    if (tgt.isMask) layer.markMaskDirty();
+    else layer.markDirty();
     return true;
   }
 
@@ -645,9 +719,9 @@
 
     if (tool === 'fill') {
       const layer = activeLayerForPainting();
-      PL.bakeIfText(layer);
+      const isMask = !!(layer.mask && PL.state.maskEditId === layer.id);
       if (!floodFill(layer, p)) return;
-      PL.history.commit('油漆桶填充');
+      PL.history.commit('油漆桶填充' + (isMask ? '（蒙版）' : ''));
       PL.refreshAll();
       return;
     }
@@ -680,6 +754,7 @@
       T.xform = {
         layer,
         base: layer.clonePixels(),
+        maskBase: layer.mask ? layer.cloneMask() : null, // 蒙版与内容一起变换
         startBox: box,
         handle, // null = 拖内容移动
         start: p,
@@ -754,7 +829,7 @@
         const dx = Math.round(p.x - xf.start.x);
         const dy = Math.round(p.y - xf.start.y);
         xf.d = { dx, dy };
-        applyScaleAbout(xf.layer, xf.base, 1, 1, 0, 0, dx, dy);
+        applyScaleAbout(xf.layer, xf.base, 1, 1, 0, 0, dx, dy, xf.maskBase);
         drawXformUI({ x: xf.startBox.x + dx, y: xf.startBox.y + dy, w: xf.startBox.w, h: xf.startBox.h });
       } else {
         // 拖角：默认等比缩放（以对角为锚点），Shift = 自由拉伸
@@ -779,6 +854,8 @@
             y: a.y + (tb.y - a.y) * f,
           };
           renderTextLayer(xf.layer);
+          xf.layer.markDirty();
+          if (xf.maskBase) applyMaskTransform(xf.layer, xf.maskBase, f, f, a.x, a.y);
           const nb = { w: xf.startBox.w * f, h: xf.startBox.h * f };
           nb.x = a.x === xf.startBox.x ? a.x : a.x - nb.w;
           nb.y = a.y === xf.startBox.y ? a.y : a.y - nb.h;
@@ -786,7 +863,7 @@
           return;
         }
         if (xf.textBase) { PL.bakeIfText(xf.layer); xf.textBase = null; }
-        applyScaleAbout(xf.layer, xf.base, fx, fy, a.x, a.y);
+        applyScaleAbout(xf.layer, xf.base, fx, fy, a.x, a.y, 0, 0, xf.maskBase);
         // 变换后的框（用于 UI 显示）
         const nb = { w: xf.startBox.w * fx, h: xf.startBox.h * fy };
         nb.x = a.x === xf.startBox.x ? a.x : a.x - nb.w;
@@ -887,9 +964,11 @@
         l.text = { ...tb, fontSize: Math.max(1, tb.fontSize * f),
           x: cx + (tb.x - cx) * f, y: cy + (tb.y - cy) * f };
         renderTextLayer(l);
+        l.markDirty();
+        if (l.mask) applyMaskTransform(l, l.cloneMask(), f, f, cx, cy); // 蒙版同步缩放
       } else {
         PL.bakeIfText(l);
-        applyScaleAbout(l, l.clonePixels(), f, f, cx, cy);
+        applyScaleAbout(l, l.clonePixels(), f, f, cx, cy, 0, 0, l.mask ? l.cloneMask() : null);
       }
       PL.history.commit('缩放 ' + Math.round(f * 100) + '%');
       PL.refreshAll();
@@ -911,7 +990,8 @@
         renderTextLayer(l);
       } else {
         PL.bakeIfText(l);
-        applyScaleAbout(l, l.clonePixels(), f, f, cx, cy, d.width / 2 - cx, d.height / 2 - cy);
+        applyScaleAbout(l, l.clonePixels(), f, f, cx, cy, d.width / 2 - cx, d.height / 2 - cy,
+          l.mask ? l.cloneMask() : null);
       }
       PL.history.commit('内容适应画布');
       PL.refreshAll();

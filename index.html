@@ -66,6 +66,7 @@
     <input type="number" id="fontSize" min="8" max="400" value="48" class="num">
   </div>
   <div class="opt tip" data-show="text"><span>点击画布直接输入文字；点击已有文字可重新编辑（Esc 取消 · Ctrl+Enter 完成）</span></div>
+  <div class="opt mask-notice hidden" id="maskNotice"><span>◧ 正在编辑蒙版（白=显示 · 黑=隐藏）— 点图层缩略图或按 \\ 返回图层</span></div>
   <div class="opt opt-end">
     <button type="button" class="mini" id="btnToolSettings" title="打开工具设置（完整参数）">⚙ 工具设置</button>
   </div>
@@ -119,7 +120,10 @@
         <span class="val" id="layerOpacityVal">100%</span>
       </div>
       <div class="layer-btns">
-        <button type="button" id="btnAddLayer" class="primary" title="新建空白图层">＋ 新建图层</button>
+        <div class="layer-btns-top">
+          <button type="button" id="btnAddLayer" class="primary" title="新建空白图层">＋ 新建图层</button>
+          <button type="button" id="btnMask" title="添加图层蒙版（已有则删除）· Alt+点击 = 应用蒙版到像素 · 右键图层有更多蒙版操作">◧ 蒙版</button>
+        </div>
         <div class="layer-btns-row">
           <button type="button" id="btnDupLayer" title="复制图层 (Ctrl+D)">⧉</button>
           <button type="button" id="btnLayerUp" title="上移一层">↑</button>

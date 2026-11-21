@@ -12,6 +12,51 @@
     newDocument,
     resizeDocument,
 
+    /** 添加/删除图层蒙版；apply=true 时为「应用蒙版到像素」 */
+    addMask(apply) {
+      const l = S.stack.getById(S.activeId);
+      if (!l) return;
+      if (apply && l.mask) return PL.actions.applyMask();
+      if (l.mask) {
+        l.mask = null;
+        l.maskCtx = null;
+        l.maskEnabled = true;
+        if (S.maskEditId === l.id) S.maskEditId = null;
+        PL.history.commit('删除图层蒙版');
+      } else {
+        l.initMask('#ffffff');
+        S.maskEditId = l.id; // 添加后直接进入蒙版编辑，便于立刻涂黑隐藏
+        PL.history.commit('添加图层蒙版');
+      }
+      PL.refreshAll();
+    },
+
+    /** 停用/启用蒙版（保留蒙版内容，只停用其作用） */
+    toggleMaskEnabled() {
+      const l = S.stack.getById(S.activeId);
+      if (!l || !l.mask) return;
+      l.maskEnabled = l.maskEnabled === false;
+      l.markMaskDirty(); // 刷新显示缓存键
+      PL.history.commit(l.maskEnabled ? '启用蒙版' : '停用蒙版');
+      PL.refreshAll();
+    },
+
+    /** 把蒙版效果固化进图层像素，然后移除蒙版 */
+    applyMask() {
+      const l = S.stack.getById(S.activeId);
+      if (!l || !l.mask) return;
+      const baked = PL.compositor.maskedPixels(l); // 只应用蒙版，不含曲线
+      l.ctx.clearRect(0, 0, l.width, l.height);
+      l.ctx.drawImage(baked, 0, 0);
+      l.mask = null;
+      l.maskCtx = null;
+      l.maskEnabled = true;
+      if (S.maskEditId === l.id) S.maskEditId = null;
+      l.markDirty();
+      PL.history.commit('应用图层蒙版');
+      PL.refreshAll();
+    },
+
     addLayer() {
       const l = new PL.Layer('图层 ' + (++S.layerSeq), S.doc.width, S.doc.height);
       S.stack.add(l);
@@ -33,6 +78,11 @@
       if (src.text) { // 文字层复制后仍是可编辑的文字层
         l.text = { ...src.text };
         l._textBox = src._textBox ? { ...src._textBox } : null;
+      }
+      if (src.mask) { // 蒙版一并复制
+        l.initMask();
+        l.maskCtx.drawImage(src.mask, 0, 0);
+        l.maskEnabled = src.maskEnabled !== false;
       }
       S.stack.add(l, src.id); // 插到原图层之上
       S.activeId = l.id;
@@ -70,7 +120,8 @@
       c.save();
       c.globalAlpha = top.opacity;
       c.globalCompositeOperation = top.blendMode;
-      if (top.visible) c.drawImage(top.canvas, 0, 0);
+      // 用「显示源」（像素→曲线→蒙版）合并：顶层的曲线与蒙版效果一并带入
+      if (top.visible) c.drawImage(PL.compositor.displayCanvas(top), 0, 0);
       c.restore();
       below.markDirty();
       S.stack.remove(top.id);
@@ -126,6 +177,11 @@
         nl._textBox = null;
       }
       if (l.curves) nl.curves = JSON.parse(JSON.stringify(l.curves)); // 保留曲线设置
+      if (l.mask) { // 蒙版随内容一起缩放
+        nl.initMask();
+        nl.maskCtx.drawImage(l.mask, dx, dy, old.width * s, old.height * s);
+        nl.maskEnabled = l.maskEnabled !== false;
+      }
       stack.layers.push(nl);
     });
     // 背景色：作为最底层新建一个背景层
@@ -221,6 +277,7 @@
     stage.style.cursor = PL.state.spacePan ? 'grab' : PL.cursorFor(tool);
     PL.compositor.clearOverlay();
     if (PL.tools.activate) PL.tools.activate(tool);
+    PL.updateMaskNotice();
   }
   PL.setTool = setTool; // 供其他模块调用（如双击文字自动切到文字工具）
 
@@ -234,6 +291,16 @@
     if (PL.curves) PL.curves.refresh(); // 曲线面板跟随图层变化
     PL.updateStatus();
     PL.updateHistoryButtons();
+    PL.updateMaskNotice();
+  };
+
+  /** 蒙版编辑态提示：处于蒙版编辑时在选项栏显示醒目提示 */
+  PL.updateMaskNotice = function () {
+    const el = document.getElementById('maskNotice');
+    if (!el) return;
+    const l = S.stack && S.stack.getById(S.activeId);
+    const editing = !!(l && l.mask && S.maskEditId === l.id);
+    el.classList.toggle('hidden', !editing);
   };
 
   PL.updateStatus = function () {
@@ -299,14 +366,33 @@
         return;
       }
 
+      // \ 在图层像素 / 蒙版之间切换编辑目标（当前图层有蒙版时）
+      if (e.key === '\\') {
+        const l = S.stack.getById(S.activeId);
+        if (l && l.mask) {
+          S.maskEditId = S.maskEditId === l.id ? null : l.id;
+          PL.layerpanel.render();
+          PL.updateMaskNotice();
+        }
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const l = S.stack.getById(S.activeId);
         if (!l) return;
         e.preventDefault();
-        PL.bakeIfText(l); // 清空像素后文字数据与像素不再对应，需固化
-        l.ctx.clearRect(0, 0, l.width, l.height);
-        l.markDirty();
-        PL.history.commit('清空图层');
+        if (l.mask && S.maskEditId === l.id) {
+          // 蒙版编辑态：清空蒙版 = 全部显示（填白）
+          l.maskCtx.fillStyle = '#ffffff';
+          l.maskCtx.fillRect(0, 0, l.width, l.height);
+          l.markMaskDirty();
+          PL.history.commit('清空蒙版');
+        } else {
+          PL.bakeIfText(l); // 清空像素后文字数据与像素不再对应，需固化
+          l.ctx.clearRect(0, 0, l.width, l.height);
+          l.markDirty();
+          PL.history.commit('清空图层');
+        }
         PL.refreshAll();
       }
     });

@@ -19,6 +19,24 @@
     c.drawImage(layer.canvas, (thumb.width - w) / 2, (thumb.height - h) / 2, w, h);
   }
 
+  /** 蒙版缩略图：黑白显示；停用时叠红叉 */
+  function drawMaskThumb(thumb, layer) {
+    const c = thumb.getContext('2d');
+    c.fillStyle = '#191a1e';
+    c.fillRect(0, 0, thumb.width, thumb.height);
+    const s = Math.min(thumb.width / layer.width, thumb.height / layer.height);
+    const w = layer.width * s, h = layer.height * s;
+    c.drawImage(layer.mask, (thumb.width - w) / 2, (thumb.height - h) / 2, w, h);
+    if (layer.maskEnabled === false) {
+      c.strokeStyle = '#ff5252';
+      c.lineWidth = 5;
+      c.beginPath();
+      c.moveTo(6, 6); c.lineTo(thumb.width - 6, thumb.height - 6);
+      c.moveTo(thumb.width - 6, 6); c.lineTo(6, thumb.height - 6);
+      c.stroke();
+    }
+  }
+
   function startRename(row, nameEl, layer) {
     row.draggable = false;
     const input = document.createElement('input');
@@ -122,6 +140,32 @@
     menu.appendChild(menuItem('下移一层', { disabled: isBottom, onClick: () => PL.actions.moveLayer(-1) }));
     menu.appendChild(menuItem('向下合并', { disabled: isBottom, onClick: () => PL.actions.mergeDown() }));
     menu.appendChild(sep());
+    // 蒙版操作
+    if (layer.mask) {
+      menu.appendChild(menuItem('编辑蒙版', {
+        onClick: () => {
+          PL.state.activeId = layer.id;
+          PL.state.maskEditId = layer.id;
+          if (PL.updateMaskNotice) PL.updateMaskNotice();
+          PL.layerpanel.render();
+        },
+      }));
+      menu.appendChild(menuItem(layer.maskEnabled === false ? '启用蒙版' : '停用蒙版', {
+        onClick: () => { PL.state.activeId = layer.id; PL.actions.toggleMaskEnabled(); },
+      }));
+      menu.appendChild(menuItem('应用蒙版到像素', {
+        onClick: () => { PL.state.activeId = layer.id; PL.actions.applyMask(); },
+      }));
+      menu.appendChild(menuItem('删除蒙版', {
+        onClick: () => { PL.state.activeId = layer.id; PL.actions.addMask(false); },
+      }));
+      menu.appendChild(sep());
+    } else {
+      menu.appendChild(menuItem('添加图层蒙版', {
+        onClick: () => { PL.state.activeId = layer.id; PL.actions.addMask(false); },
+      }));
+      menu.appendChild(sep());
+    }
     menu.appendChild(menuItem('图层属性…', { onClick: () => PL.dialogs.openLayerProps() }));
     menu.appendChild(menuItem('删除图层', { danger: true, onClick: () => PL.actions.deleteLayer() }));
 
@@ -165,12 +209,40 @@
       PL.refreshAll();
     });
 
-    // 缩略图（2x 尺寸提升清晰度）
+    // 缩略图（2x 尺寸提升清晰度）：点击 = 回到图层像素编辑
     const thumb = document.createElement('canvas');
     thumb.className = 'thumb';
     thumb.width = 96;
     thumb.height = 72;
     drawThumb(thumb, layer);
+    thumb.title = '点击编辑图层内容';
+    thumb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (PL.state.maskEditId !== null) {
+        PL.state.maskEditId = null;
+        if (PL.updateMaskNotice) PL.updateMaskNotice();
+        PL.layerpanel.render();
+      }
+    });
+
+    // 蒙版缩略图：点击 = 编辑蒙版；Shift+点击 = 启用/停用
+    let mthumb = null;
+    if (layer.mask) {
+      mthumb = document.createElement('canvas');
+      mthumb.className = 'mthumb' + (PL.state.maskEditId === layer.id ? ' active' : '');
+      mthumb.width = 64;
+      mthumb.height = 64;
+      drawMaskThumb(mthumb, layer);
+      mthumb.title = '点击编辑蒙版 · Shift+点击 启用/停用（红叉=已停用）';
+      mthumb.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (e.shiftKey) { PL.actions.toggleMaskEnabled(); return; }
+        PL.state.activeId = layer.id;
+        PL.state.maskEditId = layer.id;
+        if (PL.updateMaskNotice) PL.updateMaskNotice();
+        PL.layerpanel.render();
+      });
+    }
 
     // 名称
     const name = document.createElement('span');
@@ -178,12 +250,17 @@
     name.textContent = layer.name;
     name.addEventListener('dblclick', () => startRename(row, name, layer));
 
-    row.append(eye, thumb, name);
+    if (mthumb) row.append(eye, thumb, mthumb, name);
+    else row.append(eye, thumb, name);
 
-    // 选中
+    // 选中（点行 = 选中并回到图层像素编辑）
     row.addEventListener('click', (e) => {
-      if (e.target === eye || row.querySelector('input.rename')) return;
+      if (e.target === eye || e.target === mthumb || row.querySelector('input.rename')) return;
       PL.state.activeId = layer.id;
+      if (PL.state.maskEditId !== null && PL.state.maskEditId !== layer.id) {
+        PL.state.maskEditId = null; // 换图层时退出蒙版编辑
+        if (PL.updateMaskNotice) PL.updateMaskNotice();
+      }
       PL.layerpanel.render();
     });
 
@@ -230,6 +307,9 @@
       document.getElementById('btnLayerDown').addEventListener('click', () => PL.actions.moveLayer(-1));
       document.getElementById('btnMergeDown').addEventListener('click', () => PL.actions.mergeDown());
       document.getElementById('btnDelLayer').addEventListener('click', () => PL.actions.deleteLayer());
+      // 蒙版：点击 = 添加/删除；Alt+点击 = 应用蒙版到像素
+      document.getElementById('btnMask').addEventListener('click', (e) =>
+        PL.actions.addMask(e.altKey));
 
       // 当前图层：不透明度（input 实时预览，change 入历史）
       const op = document.getElementById('layerOpacity');

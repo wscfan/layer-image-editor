@@ -61,6 +61,13 @@ label { color: #9a9ca3; }
 .opt { display: flex; align-items: center; gap: 8px; }
 .opt .val { color: #8b8d94; min-width: 34px; display: inline-block; }
 .opt.tip span { color: #8b8d94; }
+.opt.mask-notice span {
+  color: #ffb4a9;
+  background: rgba(178, 58, 44, .25);
+  border: 1px solid rgba(255, 82, 82, .45);
+  border-radius: 6px;
+  padding: 3px 10px;
+}
 .opt button.mini { padding: 3px 9px; font-size: 12px; }
 .opt-end { margin-left: auto; }
 
@@ -144,6 +151,14 @@ label { color: #9a9ca3; }
   width: 48px; height: 36px; flex: none;
   border: 1px solid #3c3e46; border-radius: 4px; background: #191a1e;
 }
+.lrow .mthumb {
+  width: 32px; height: 32px; flex: none;
+  border: 1px solid #3c3e46; border-radius: 4px; background: #191a1e;
+}
+.lrow .mthumb.active {
+  border-color: #ff5252;
+  box-shadow: 0 0 0 1px #ff5252;
+}
 .lrow .lname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lrow input.rename { width: 100%; min-width: 0; padding: 2px 6px; }
 .lrow.off .thumb, .lrow.off .lname { opacity: .35; }
@@ -157,6 +172,8 @@ label { color: #9a9ca3; }
 .active-opacity .val { color: #8b8d94; min-width: 34px; }
 
 .layer-btns { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.layer-btns-top { display: flex; gap: 6px; }
+.layer-btns-top #btnAddLayer { flex: 1; }
 .layer-btns-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .layer-btns button { padding: 5px 9px; }
 .adj-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 2px; }

@@ -19,6 +19,7 @@
   let poolBytes = 0;
 
   function keyOf(layer) { return layer.id + '@' + (layer._pxv || 0); }
+  function mkeyOf(layer) { return layer.id + '@' + (layer._pxv || 0) + '@m' + (layer._maskVersion || 0); }
 
   function cloneCanvas(src) {
     const c = document.createElement('canvas');
@@ -76,8 +77,10 @@
 
     /** 采集当前文档的完整快照（像素按 id@pxv 引用共享克隆池） */
     snapshot(label) {
-      const s = PL.state;      const layers = s.stack.layers.map(l => {
+      const s = PL.state;
+      const layers = s.stack.layers.map(l => {
         const key = keyOf(l);
+        const hasMask = !!l.mask;
         return {
           id: l.id,
           name: l.name,
@@ -91,9 +94,15 @@
           text: l.text ? { ...l.text } : null,           // 文字源数据（保证撤销后仍可再编辑）
           textBox: l._textBox ? { ...l._textBox } : null,
           curves: l.curves ? JSON.parse(JSON.stringify(l.curves)) : null, // 曲线定义
+          hasMask,                                          // 蒙版存在性
+          maskEnabled: hasMask ? l.maskEnabled !== false : true,
+          mv: l._maskVersion || 0,                          // 蒙版像素版本
+          mkey: hasMask ? mkeyOf(l) : null,                 // 池键：定位蒙版像素
         };
       });
-      return { label, activeId: s.activeId, layerSeq: s.layerSeq, layers, uses: layers.map(m => m.key) };
+      const uses = [];
+      layers.forEach(m => { uses.push(m.key); if (m.mkey) uses.push(m.mkey); });
+      return { label, activeId: s.activeId, layerSeq: s.layerSeq, layers, uses };
     },
 
     /** 提交一次操作（在操作完成后调用） */
@@ -102,12 +111,19 @@
       while (this.entries.length - 1 > this.index) {
         release(this.entries.pop());
       }
-      // 采集新快照；仅新增/变更的像素版本才会真正克隆
+      // 采集新快照；仅新增/变更的像素/蒙版版本才会真正克隆
       const snap = this.snapshot(label);
-      const sourceByKey = new Map(snap.layers.map(m => [m.key, m]));
+      const sourceByKey = new Map();
+      snap.layers.forEach(m => {
+        sourceByKey.set(m.key, m);
+        if (m.mkey) sourceByKey.set(m.mkey, m); // 蒙版池键也指向该层元数据
+      });
       retain(snap.uses, key => {
-        const l = PL.state.stack.getById(sourceByKey.get(key).id);
-        return l ? l.canvas : document.createElement('canvas');
+        const meta = sourceByKey.get(key);
+        const l = meta ? PL.state.stack.getById(meta.id) : null;
+        if (!l) return document.createElement('canvas');
+        // 蒙版池键（带 @m 后缀）克隆蒙版画布，普通键克隆图层像素
+        return key.indexOf('@m') !== -1 && l.mask ? l.mask : l.canvas;
       });
       this.entries.push(snap);
       if (this.entries.length > LIMIT) release(this.entries.shift());
@@ -125,8 +141,10 @@
       const s = PL.state;
       const sourceByKey = new Map(snap.layers.map(m => [m.key, s.stack.getById(m.id)]));
       retain(snap.uses, key => {
-        const l = sourceByKey.get(key);
-        return l ? l.canvas : document.createElement('canvas');
+        const meta = sourceByKey.get(key);
+        const l = meta ? PL.state.stack.getById(meta.id) : null;
+        if (!l) return document.createElement('canvas');
+        return key.indexOf('@m') !== -1 && l.mask ? l.mask : l.canvas;
       });
       this.entries = [snap];
       this.index = 0;
@@ -164,6 +182,21 @@
         l._textBox = m.textBox ? { ...m.textBox } : null;
         l.curves = m.curves ? JSON.parse(JSON.stringify(m.curves)) : null;
         l._curveVersion = (l._curveVersion || 0) + 1; // 使预览缓存失效
+        // 蒙版还原：从池中取回蒙版像素
+        if (m.hasMask) {
+          l.initMask('#ffffff');
+          const me = pool.get(m.mkey);
+          if (me) {
+            l.maskCtx.clearRect(0, 0, l.width, l.height);
+            l.maskCtx.drawImage(me.canvas, 0, 0);
+          }
+          l.maskEnabled = m.maskEnabled;
+          l._maskVersion = m.mv;
+        } else {
+          l.mask = null;
+          l.maskCtx = null;
+          l.maskEnabled = true;
+        }
         s.stack.layers.push(l);
         PL.Layer._seq = Math.max(PL.Layer._seq, m.id);
       });

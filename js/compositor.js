@@ -15,6 +15,54 @@
   }
   function invalidateRect() { rectCache = null; }
 
+  /* ================= 蒙版 → alpha 转换与显示源缓存 ================= */
+
+  // 蒙版是「不透明灰度画布」（白=显示/黑=隐藏）。合成需要的是 alpha 遮罩：
+  // 把灰度搬到 alpha 通道（destination-in 用源 alpha 参与混合）。
+  let maskAlphaCache = { key: null, canvas: null };
+
+  function maskAlpha(layer) {
+    const key = layer.id + ':' + (layer._maskVersion || 0);
+    if (maskAlphaCache.key === key && maskAlphaCache.canvas) return maskAlphaCache.canvas;
+    const c = document.createElement('canvas');
+    c.width = layer.width;
+    c.height = layer.height;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(layer.mask, 0, 0);
+    const img = x.getImageData(0, 0, c.width, c.height);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const g = d[i];                        // 先取出灰度（蒙版只画灰色，R 即灰度）
+      d[i] = d[i + 1] = d[i + 2] = 255;      // 颜色无关紧要，只看 alpha
+      d[i + 3] = g;                          // 灰度 → 可见度
+    }
+    x.putImageData(img, 0, 0);
+    maskAlphaCache = { key, canvas: c };
+    return c;
+  }
+
+  // 「显示源」链：图层像素 →（曲线）→（蒙版）。结果按 id:pxv:curveV:maskV:enabled 缓存。
+  let dispCache = { key: null, canvas: null };
+
+  function displayCanvas(l) {
+    const hasCurve = PL.curves && PL.curves.hasCurves(l);
+    const masked = !!(l.mask && l.maskEnabled !== false);
+    if (!masked) return hasCurve ? PL.curves.previewCanvas(l) : l.canvas;
+    const key = [l.id, l._pxv || 0, hasCurve ? l._curveVersion || 0 : '-',
+      l._maskVersion || 0, l.maskEnabled !== false ? 1 : 0].join(':');
+    if (dispCache.key === key && dispCache.canvas) return dispCache.canvas;
+    const base = hasCurve ? PL.curves.previewCanvas(l) : l.canvas;
+    const c = document.createElement('canvas');
+    c.width = l.width;
+    c.height = l.height;
+    const x = c.getContext('2d');
+    x.drawImage(base, 0, 0);
+    x.globalCompositeOperation = 'destination-in';
+    x.drawImage(maskAlpha(l), 0, 0);
+    dispCache = { key, canvas: c };
+    return c;
+  }
+
   PL.compositor = {
     init() {
       els.stage = document.getElementById('stage');
@@ -131,11 +179,8 @@
         // 调整面板的实时预览：只作用于当前图层。
         // ctx.filter 是持久状态，必须逐层显式赋值，否则会「漏」到上方的图层。
         ctx.filter = (s.previewFilter && l.id === s.previewLayerId) ? s.previewFilter : 'none';
-        // 曲线：图层带曲线时用经过 LUT 的画布
-        const src = (PL.curves && PL.curves.hasCurves(l))
-          ? PL.curves.previewCanvas(l)
-          : l.canvas;
-        ctx.drawImage(src, 0, 0);
+        // 显示源 = 像素 →（曲线）→（蒙版）
+        ctx.drawImage(displayCanvas(l), 0, 0);
       }
       ctx.filter = 'none';
       ctx.globalAlpha = 1;
@@ -175,10 +220,7 @@
         if (!l.visible) continue;
         ctx.globalAlpha = l.opacity;
         ctx.globalCompositeOperation = l.blendMode;
-        const src = (PL.curves && PL.curves.hasCurves(l))
-          ? PL.curves.previewCanvas(l)
-          : l.canvas;
-        ctx.drawImage(src, 0, 0, w, h);
+        ctx.drawImage(displayCanvas(l), 0, 0, w, h);
       }
       return c.toDataURL(mime, quality);
     },
@@ -186,6 +228,20 @@
     stage() { return els.stage; },
     overlayCtx() { return els.overlayCtx; },
     area() { return els.area; },
+    /** 图层的显示源（像素→曲线→蒙版），供合并等需要取最终外观的场景使用 */
+    displayCanvas(l) { return displayCanvas(l); },
+    /** 只应用蒙版（不含曲线）的结果 —— 用于把蒙版固化进像素 */
+    maskedPixels(l) {
+      if (!l.mask) return l.canvas;
+      const c = document.createElement('canvas');
+      c.width = l.width;
+      c.height = l.height;
+      const x = c.getContext('2d');
+      x.drawImage(l.canvas, 0, 0);
+      x.globalCompositeOperation = 'destination-in';
+      x.drawImage(maskAlpha(l), 0, 0);
+      return c;
+    },
   };
 
   PL.render = () => PL.compositor.render();
