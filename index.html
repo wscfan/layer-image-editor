@@ -14,7 +14,8 @@
   <div class="group">
     <button id="btnNewDoc" title="新建文档">新建</button>
     <button id="btnDocSettings" title="修改画布尺寸与背景">文档设置</button>
-    <button id="btnOpen" title="导入图片作为图层（可多选）">打开图片</button>
+    <button id="btnOpen" title="打开图片（作为图层导入，支持多选）或 .lpaint 工程文件">打开</button>
+    <button id="btnSaveProject" class="primary" title="保存工程文件（保留图层/蒙版/文字/曲线）(Ctrl+S)">保存工程</button>
   </div>
   <div class="group">
     <button id="btnUndo" title="撤销 (Ctrl+Z)">↩ 撤销</button>
@@ -207,11 +208,11 @@
   <span id="docInfo">—</span>
   <span id="posInfo" class="val"></span>
   <span class="spacer"></span>
-  <span class="hint">B 画笔 · E 橡皮 · G 填充 · T 文字 · S 缩放 · M 移动 · I 吸管 · Ctrl+Z 撤销 · Ctrl+S 导出 · Ctrl+滚轮 缩放</span>
+  <span class="hint">B 画笔 · E 橡皮 · G 填充 · T 文字 · S 缩放 · M 移动 · I 吸管 · Ctrl+Z 撤销 · Ctrl+S 保存工程 · 方向键微调 · Ctrl+滚轮 缩放</span>
 </footer>
 
 <!-- 隐藏的文件选择框 -->
-<input type="file" id="fileInput" accept="image/*" multiple hidden>
+<input type="file" id="fileInput" accept="image/*,.lpaint,.json" multiple hidden>
 
 <script src="js/layer.js"></script>
 <script src="js/history.js"></script>
@@ -219,6 +220,7 @@
 <script src="js/curves.js"></script>
 <script src="js/modal.js"></script>
 <script src="js/dialogs.js"></script>
+<script src="js/project.js"></script>
 <script src="js/compositor.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/layerpanel.js"></script>

@@ -131,6 +131,7 @@
       trimPool();   // 像素池超内存上限时逐出最旧条目
       PL.state.pristine = false;
       if (PL.updateHistoryButtons) PL.updateHistoryButtons();
+      if (PL.project && PL.project.scheduleDraft) PL.project.scheduleDraft(); // 自动草稿（防抖）
     },
 
     /** 重置历史，把当前状态作为初始状态（新建文档 / 首次导入） */
@@ -151,6 +152,7 @@
       // 注意：这里不设置 pristine —— 该标志由调用方（新建文档 / 导入图片）按语义维护，
       // 否则导入完成后会被误置为「未编辑」，导致下次导入整份文档被清空。
       if (PL.updateHistoryButtons) PL.updateHistoryButtons();
+      if (PL.project && PL.project.scheduleDraft) PL.project.scheduleDraft();
     },
 
     undo() {

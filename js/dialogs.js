@@ -151,6 +151,45 @@
     },
 
     /* ---------- 图层属性 ---------- */
+    /** 旋转 / 翻转图层 */
+    async openRotateFlip() {
+      const s = PL.state;
+      const l = s.stack ? s.stack.getById(s.activeId) : null;
+      if (!l) return;
+      const values = await PL.modal.open({
+        title: '旋转 / 翻转图层',
+        fields: [
+          {
+            type: 'select', id: 'rfOp', label: '操作', value: 'cw90',
+            options: [
+              ['cw90', '右旋 90°'], ['ccw90', '左旋 90°'], ['r180', '旋转 180°'],
+              ['custom', '自定义角度'], ['h', '水平翻转'], ['v', '垂直翻转'],
+            ],
+          },
+          { type: 'number', id: 'rfDeg', label: '角度 (°)', value: 45, min: -360, max: 360 },
+          { type: 'static', html: '<p class="tip">画布尺寸不变，旋转后超出画布的部分会被裁剪；文字图层会固化为像素；蒙版随图层一起变换。</p>' },
+        ],
+        submitText: '应用',
+        onOpen: (card, api) => {
+          const sync = () => {
+            const row = api.rowOf('rfDeg');
+            if (row) row.style.display = api.values().rfOp === 'custom' ? '' : 'none';
+          };
+          api.field('rfOp').addEventListener('change', sync);
+          sync();
+        },
+      });
+      if (!values) return;
+      switch (values.rfOp) {
+        case 'cw90': PL.actions.rotateLayer(90); break;
+        case 'ccw90': PL.actions.rotateLayer(-90); break;
+        case 'r180': PL.actions.rotateLayer(180); break;
+        case 'custom': PL.actions.rotateLayer(Math.max(-360, Math.min(360, +values.rfDeg || 0))); break;
+        case 'h': PL.actions.flipLayer('h'); break;
+        case 'v': PL.actions.flipLayer('v'); break;
+      }
+    },
+
     async openLayerProps() {
       const s = PL.state;
       const l = s.stack ? s.stack.getById(s.activeId) : null;

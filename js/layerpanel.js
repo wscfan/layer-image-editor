@@ -139,6 +139,7 @@
     menu.appendChild(menuItem('上移一层', { disabled: isTop, onClick: () => PL.actions.moveLayer(1) }));
     menu.appendChild(menuItem('下移一层', { disabled: isBottom, onClick: () => PL.actions.moveLayer(-1) }));
     menu.appendChild(menuItem('向下合并', { disabled: isBottom, onClick: () => PL.actions.mergeDown() }));
+    menu.appendChild(menuItem('旋转 / 翻转…', { onClick: () => PL.dialogs.openRotateFlip() }));
     menu.appendChild(sep());
     // 蒙版操作
     if (layer.mask) {

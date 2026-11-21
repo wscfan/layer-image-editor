@@ -919,6 +919,9 @@
   PL.tools = {
     get drawing() { return T.drawing; },
 
+    /** 供工程文件加载时重建文字命中框 */
+    measureTextBox,
+
     /** 切换到某工具时由 main.setTool 调用 */
     activate(tool) {
       if (tool === 'scale') drawXformUI(refreshBBox(true));

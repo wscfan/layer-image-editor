@@ -6,11 +6,101 @@
 
   const S = PL.state;
 
+  let nudgeTimer = 0; // 方向键微调的防抖提交
+
+  /** 对图层像素与蒙版应用同一个 2D 变换（绕画布中心；文字图层先固化） */
+  function transformLayerPixels(l, setupTransform) {
+    const base = l.clonePixels();
+    const mb = l.mask ? l.cloneMask() : null;
+    PL.bakeIfText(l); // 变换后文字数据与像素不再对齐，固化
+    const apply = (ctx, src) => {
+      const cx = l.width / 2, cy = l.height / 2;
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.clearRect(0, 0, l.width, l.height);
+      setupTransform(ctx, cx, cy);
+      // 补偿平移：使 setupTransform 中的 rotate/scale 以 (cx,cy) 为中心。
+      // 若缺少这一步，rotate 的有效中心会偏移到 (I-R)⁻¹·t（实测曾绕错中心旋转）。
+      ctx.translate(-cx, -cy);
+      ctx.drawImage(src, 0, 0);
+      ctx.restore();
+    };
+    apply(l.ctx, base);
+    l.markDirty();
+    if (mb) {
+      apply(l.maskCtx, mb);
+      l.markMaskDirty();
+    }
+  }
+
   /* ================= 图层操作 ================= */
 
   PL.actions = {
     newDocument,
     resizeDocument,
+
+    /** 图层旋转（角度制，绕画布中心；蒙版同步，文字固化） */
+    rotateLayer(deg) {
+      const l = S.stack.getById(S.activeId);
+      if (!l || !deg) return;
+      const rad = deg * Math.PI / 180;
+      transformLayerPixels(l, (ctx, cx, cy) => {
+        ctx.translate(cx, cy);
+        ctx.rotate(rad);
+      });
+      PL.history.commit('旋转图层 ' + deg + '°');
+      PL.refreshAll();
+    },
+
+    /** 图层翻转：axis = 'h' 水平 / 'v' 垂直（蒙版同步，文字固化） */
+    flipLayer(axis) {
+      const l = S.stack.getById(S.activeId);
+      if (!l) return;
+      transformLayerPixels(l, (ctx, cx, cy) => {
+        ctx.translate(cx, cy);
+        ctx.scale(axis === 'h' ? -1 : 1, axis === 'v' ? -1 : 1);
+      });
+      PL.history.commit(axis === 'h' ? '水平翻转图层' : '垂直翻转图层');
+      PL.refreshAll();
+    },
+
+    /** 方向键微调：像素级搬移（蒙版与文字坐标同步），连续按键防抖合并为一次历史 */
+    nudgeLayer(dx, dy) {
+      const l = S.stack.getById(S.activeId);
+      if (!l || (!dx && !dy)) return;
+      const base = l.clonePixels();
+      const mb = l.mask ? l.cloneMask() : null;
+      const c = l.ctx;
+      c.save();
+      c.globalAlpha = 1;
+      c.globalCompositeOperation = 'source-over';
+      c.clearRect(0, 0, l.width, l.height);
+      c.drawImage(base, dx, dy);
+      c.restore();
+      l.markDirty();
+      if (mb) {
+        const mc = l.maskCtx;
+        mc.save();
+        mc.globalAlpha = 1;
+        mc.globalCompositeOperation = 'source-over';
+        mc.clearRect(0, 0, l.width, l.height);
+        mc.drawImage(mb, dx, dy);
+        mc.restore();
+        l.markMaskDirty();
+      }
+      if (l.text) { // 文字图层保持可编辑：坐标同步
+        l.text.x += dx;
+        l.text.y += dy;
+        if (l._textBox) { l._textBox.x += dx; l._textBox.y += dy; }
+      }
+      PL.render();
+      clearTimeout(nudgeTimer);
+      nudgeTimer = setTimeout(() => {
+        PL.history.commit('微调图层位置');
+        PL.refreshAll();
+      }, 400);
+    },
 
     /** 添加/删除图层蒙版；apply=true 时为「应用蒙版到像素」 */
     addMask(apply) {
@@ -217,7 +307,14 @@
    * 若文档尚未编辑过（pristine），用第一张图片的尺寸作为画布尺寸（上限 1800px）。
    */
   async function importFiles(fileList) {
-    const files = [...fileList].filter(f => f.type.startsWith('image/'));
+    const all = [...fileList];
+    // 工程文件优先：打开 .lpaint 会整体替换当前文档
+    const proj = all.find(f => /\.lpaint$/i.test(f.name) || /\.json$/i.test(f.name));
+    if (proj) {
+      await PL.project.openFile(proj);
+      return;
+    }
+    const files = all.filter(f => f.type.startsWith('image/'));
     if (!files.length) return;
 
     const loaded = [];
@@ -347,11 +444,20 @@
         return;
       }
       if (mod && k === 'y') { e.preventDefault(); PL.history.redo(); return; }
-      if (mod && k === 's') { e.preventDefault(); exportImage('image/png', 'png'); return; }
+      if (mod && k === 's') { e.preventDefault(); PL.project.saveFile(); return; }
       if (mod && k === 'd') { e.preventDefault(); PL.actions.duplicateLayer(); return; }
       if (mod) return;
 
       if (PL.tools.drawing) return;
+
+      // 方向键微调当前图层（Shift = 10px；连续按键防抖合并为一次历史）
+      const NUDGE = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      if (NUDGE[e.key]) {
+        e.preventDefault();
+        const [dx, dy] = NUDGE[e.key];
+        PL.actions.nudgeLayer(e.shiftKey ? dx * 10 : dx, e.shiftKey ? dy * 10 : dy);
+        return;
+      }
 
       const map = {
         b: 'brush', e: 'eraser', m: 'move', g: 'fill',
@@ -427,6 +533,8 @@
       importFiles(e.target.files);
       e.target.value = '';
     });
+    document.getElementById('btnSaveProject').addEventListener('click', () =>
+      PL.project.saveFile());
     document.getElementById('btnUndo').addEventListener('click', () => PL.history.undo());
     document.getElementById('btnRedo').addEventListener('click', () => PL.history.redo());
     document.getElementById('btnExportPng').addEventListener('click', () =>
@@ -580,6 +688,8 @@
 
     // 初始文档：1000×660 白底
     newDocument(1000, 660, '#ffffff', '新建文档');
+    // 检测未保存的自动草稿（IndexedDB），询问是否恢复
+    PL.project.checkDraftOnStartup();
     setTool('brush');
   }
 
